@@ -9,8 +9,8 @@
 
 | 工具 | 说明 | 去提交 |
 |------|------|--------|
-| **docker-downloader** | 下载 Docker 镜像并打包为 tar.gz | [![Issue](https://img.shields.io/badge/提交请求-Docker-blue?style=flat&logo=docker)](../../issues/new?template=docker-downloader.yml) |
-| **deb-downloader** | 下载 Ubuntu deb 包及所有依赖 | [![Issue](https://img.shields.io/badge/提交请求-Deb-orange?style=flat&logo=ubuntu)](../../issues/new?template=deb-downloader.yml) |
+| **docker-downloader** | 下载 Docker 镜像并打包为 tar.gz | [![Issue](https://img.shields.io/badge/提交请求-Docker-blue?style=flat&logo=docker)](https://github.com/JustGooooo/useful-tool/issues/new?template=docker-downloader.yml) |
+| **deb-downloader** | 下载 Ubuntu deb 包及所有依赖 | [![Issue](https://img.shields.io/badge/提交请求-Deb-orange?style=flat&logo=ubuntu)](https://github.com/JustGooooo/useful-tool/issues/new?template=deb-downloader.yml) |
 
 ---
 
