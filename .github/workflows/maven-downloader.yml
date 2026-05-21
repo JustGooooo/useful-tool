@@ -135,32 +135,25 @@ jobs:
             MVN_OPTS="$MVN_OPTS -DexcludeTransitive=true"
           fi
 
-          # 判断是否需要额外下载 sources/javadoc（用字符串匹配，不用 grep）
-          NEED_SOURCES=false
-          NEED_JAVADOC=false
-          if [[ "$CLASSIFIERS" == *"源码"* ]]; then
-            NEED_SOURCES=true
-          fi
-          if [[ "$CLASSIFIERS" == *"javadoc"* ]]; then
-            NEED_JAVADOC=true
-          fi
-          echo "DEBUG: NEED_SOURCES=$NEED_SOURCES NEED_JAVADOC=$NEED_JAVADOC"
-
-          # 第一步：下载主包（jar + pom）
+          # 下载主包（jar + pom）
           echo "📥 下载主包..."
           mvn -f /tmp/pom.xml dependency:copy-dependencies $MVN_OPTS
 
-          # 第二步：额外下载 sources（如有）
-          echo "DEBUG NEED_SOURCES=$NEED_SOURCES NEED_JAVADOC=$NEED_JAVADOC"
-          if [ "$NEED_SOURCES" = true ]; then
+          # 根据 CLASSIFIERS 内容下载 sources/javadoc
+          # 用文件标记判断（避免 set -e 导致变量赋值失败）
+          rm -f /tmp/need_sources /tmp/need_javadoc
+          echo "$CLASSIFIERS" | grep -q "源码" && touch /tmp/need_sources || true
+          echo "$CLASSIFIERS" | grep -q "javadoc" && touch /tmp/need_javadoc || true
+          echo "DEBUG: sources=$(test -f /tmp/need_sources && echo YES || echo NO) javadoc=$(test -f /tmp/need_javadoc && echo YES || echo NO)"
+
+          if [ -f /tmp/need_sources ]; then
             echo "📥 下载 sources..."
-            mvn -f /tmp/pom.xml dependency:copy-dependencies $MVN_OPTS -Dclassifier=sources || echo "⚠️ 部分 sources 下载失败（库可能未发布 sources）"
+            mvn -f /tmp/pom.xml dependency:copy-dependencies $MVN_OPTS -Dclassifier=sources -Dmdep.failOnMissingClassifierArtifact=false || true
           fi
 
-          # 第三步：额外下载 javadoc（如有）
-          if [ "$NEED_JAVADOC" = true ]; then
+          if [ -f /tmp/need_javadoc ]; then
             echo "📥 下载 javadoc..."
-            mvn -f /tmp/pom.xml dependency:copy-dependencies $MVN_OPTS -Dclassifier=javadoc || echo "⚠️ 部分 javadoc 下载失败（库可能未发布 javadoc）"
+            mvn -f /tmp/pom.xml dependency:copy-dependencies $MVN_OPTS -Dclassifier=javadoc -Dmdep.failOnMissingClassifierArtifact=false || true
           fi
 
           # 显示下载结果
