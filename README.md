@@ -7,6 +7,7 @@
 | 工具 | 说明 | Issue 模板 |
 |------|------|-----------|
 | deb-downloader | 下载 Ubuntu .deb 包及依赖 | [提交请求](../../issues/new?template=deb-downloader.yml) |
+| docker-downloader | 下载 Docker 镜像并导出为 tar.gz | [提交请求](../../issues/new?template=docker-downloader.yml) |
 
 ## deb-downloader
 
@@ -42,3 +43,31 @@ tar -xzf deb-nginx-ubuntu24.04-*.tar.gz
 # 安装所有 deb 包
 sudo dpkg -i *.deb
 ```
+
+## docker-downloader
+
+下载指定 Docker 镜像，导出为 .tar.gz 发布到 GitHub Release，用于离线加载。
+
+### 使用方式
+
+1. 点击上方「提交请求」链接
+2. 填写表单：
+   - **镜像列表**：每行一个镜像（如 `nginx:latest`、`ghcr.io/owner/repo:tag`）
+   - **CPU 架构**：选择 `linux/amd64`、`linux/arm64` 等
+3. 提交 issue，等待 Actions 自动执行
+4. 执行完成后，issue 中会回复下载链接和 `docker load` 命令
+
+### 离线加载
+
+```bash
+# 加载镜像
+docker load -i nginx_latest-linux-amd64.tar.gz
+```
+
+### 查找镜像信息
+
+| 网站 | 说明 |
+|------|------|
+| [Docker Hub](https://hub.docker.com/) | 官方 Docker 镜像仓库 |
+| [GitHub Container Registry](https://ghcr.io/) | GitHub 托管的容器镜像 |
+| [阿里云容器镜像](https://cr.console.aliyun.com/) | 阿里云容器镜像服务 |
