@@ -17,10 +17,15 @@ jobs:
         env:
           ISSUE_BODY: ${{ github.event.issue.body }}
         run: |
-          # Issue Forms 渲染格式为: ### Label\n\nvalue
-          PACKAGE_NAME=$(echo "$ISSUE_BODY" | grep -A1 "### 软件包名" | tail -1 | xargs)
-          UBUNTU_VERSION=$(echo "$ISSUE_BODY" | grep -A1 "### Ubuntu 版本" | tail -1 | xargs)
-          PACKAGE_VERSION=$(echo "$ISSUE_BODY" | grep -A1 "### 包版本（可选）" | tail -1 | xargs)
+          # Issue Forms 渲染格式为: ### Label\n\nvalue（标题和值之间有空行）
+          # 用 grep -A3 取标题后3行，过滤空行和标题行，取剩余内容
+          extract_field() {
+            echo "$ISSUE_BODY" | grep -A3 "$1" | grep -v "^###" | grep -v "^--$" | sed '/^$/d' | head -1 | xargs
+          }
+
+          PACKAGE_NAME=$(extract_field "### 软件包名")
+          UBUNTU_VERSION=$(extract_field "### Ubuntu 版本")
+          PACKAGE_VERSION=$(extract_field "### 包版本（可选）")
 
           if [ -z "$PACKAGE_NAME" ]; then
             echo "::error::未找到软件包名"
