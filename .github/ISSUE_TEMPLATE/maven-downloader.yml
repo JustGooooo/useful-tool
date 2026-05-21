@@ -13,6 +13,29 @@ body:
     validations:
       required: true
 
+  - type: dropdown
+    id: classifiers
+    attributes:
+      label: 附加内容
+      description: "是否下载源码和 javadoc"
+      options:
+        - "仅主包（不下载源码和 javadoc）"
+        - "同时下载源码（sources）"
+        - "同时下载 javadoc"
+        - "同时下载源码和 javadoc"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: transitive
+    attributes:
+      label: 是否下载传递依赖
+      options:
+        - "是，下载所有传递依赖"
+        - "否，仅下载主包"
+    validations:
+      required: true
+
   - type: input
     id: repository_url
     attributes:

@@ -25,6 +25,8 @@ jobs:
           }
 
           MAVEN_COORD=$(extract_field "### Maven 坐标")
+          CLASSIFIERS=$(extract_field "### 附加内容")
+          TRANSITIVE=$(extract_field "### 是否下载传递依赖")
           REPO_URL=$(extract_field "### 仓库地址（可选）")
 
           # Issue Forms 留空字段返回 "_No response_"
@@ -51,6 +53,8 @@ jobs:
           echo "group_id=$GROUP_ID" >> $GITHUB_OUTPUT
           echo "artifact_id=$ARTIFACT_ID" >> $GITHUB_OUTPUT
           echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "classifiers=$CLASSIFIERS" >> $GITHUB_OUTPUT
+          echo "transitive=$TRANSITIVE" >> $GITHUB_OUTPUT
           echo "repo_url=$REPO_URL" >> $GITHUB_OUTPUT
 
           echo "📦 坐标: $MAVEN_COORD"
@@ -114,12 +118,28 @@ jobs:
           </project>
           EOF
 
-          # 下载主包及所有传递依赖，保留 Maven 仓库结构
-          mvn -f /tmp/pom.xml dependency:copy-dependencies \
-            -DoutputDirectory=/tmp/maven-output \
-            -Dmdep.useRepositoryLayout=true \
-            -DincludeScope=runtime \
-            -B -q
+          # 构建 mvn 参数
+          MVN_OPTS="-DoutputDirectory=/tmp/maven-output -Dmdep.useRepositoryLayout=true -B -q"
+
+          # 是否包含传递依赖
+          if [ "$TRANSITIVE" = "否，仅下载主包" ]; then
+            MVN_OPTS="$MVN_OPTS -DexcludeTransitive=true"
+          fi
+
+          # 下载主包
+          mvn -f /tmp/pom.xml dependency:copy-dependencies $MVN_OPTS
+
+          # 下载 sources
+          if echo "$CLASSIFIERS" | grep -q "源码"; then
+            echo "📥 额外下载 sources..."
+            mvn -f /tmp/pom.xml dependency:copy-dependencies $MVN_OPTS -Dclassifier=sources
+          fi
+
+          # 下载 javadoc
+          if echo "$CLASSIFIERS" | grep -q "javadoc"; then
+            echo "📥 额外下载 javadoc..."
+            mvn -f /tmp/pom.xml dependency:copy-dependencies $MVN_OPTS -Dclassifier=javadoc
+          fi
 
           # 统计
           JAR_COUNT=$(find /tmp/maven-output -name "*.jar" | wc -l)
