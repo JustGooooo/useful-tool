@@ -1,3 +1,70 @@
+# Docker 镜像下载器实施计划
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** 通过 GitHub Issue Forms 触发 Actions，自动拉取 Docker 镜像并导出为 .tar.gz，发布到 Release 或 Artifact。
+
+**Architecture:** Issue Forms 收集镜像列表和架构 → workflow 逐个 docker pull + docker save → 判断大小选择 Release 或 Artifact → issue 回复结果和 docker load 命令。
+
+**Tech Stack:** GitHub Actions, Bash (docker), actions/github-script, softprops/action-gh-release, actions/upload-artifact
+
+---
+
+### Task 1: 创建 Issue Form 模板
+
+**Files:**
+- Create: `.github/ISSUE_TEMPLATE/docker-downloader.yml`
+
+- [ ] **Step 1: 创建模板文件**
+
+```yaml
+---
+name: Docker 镜像下载请求
+description: 下载指定 Docker 镜像并打包发布到 Release
+title: "[docker] "
+labels: ["docker-downloader"]
+body:
+  - type: textarea
+    id: images
+    attributes:
+      label: 镜像列表
+      description: "每行一个镜像，格式如 nginx:latest 或 ghcr.io/owner/repo:tag"
+      placeholder: |
+        nginx:latest
+        redis:7-alpine
+    validations:
+      required: true
+
+  - type: dropdown
+    id: platform
+    attributes:
+      label: CPU 架构
+      options:
+        - "linux/amd64"
+        - "linux/arm64"
+        - "linux/arm/v7"
+        - "windows/amd64"
+    validations:
+      required: true
+```
+
+- [ ] **Step 2: 提交**
+
+```bash
+git add .github/ISSUE_TEMPLATE/docker-downloader.yml
+git commit -m "feat: 添加 docker-downloader Issue Form 模板"
+```
+
+---
+
+### Task 2: 创建 docker-downloader Workflow
+
+**Files:**
+- Create: `.github/workflows/docker-downloader.yml`
+
+- [ ] **Step 1: 创建完整 workflow**
+
+```yaml
 name: Docker 镜像下载
 
 on:
@@ -86,10 +153,11 @@ jobs:
           TOTAL_SIZE=0
 
           for image in "${image_array[@]}"; do
-            image=$(echo "$image" | xargs)
+            image=$(echo "$image" | xargs)  # trim
             echo "正在拉取: $image ($PLATFORM)"
             docker pull "$image" --platform "$PLATFORM"
 
+            # 文件名清理：/ 和 : 替换为 _
             image_name="${image//\//_}"
             image_name="${image_name//:/_}"
             filename="${image_name}-${ARCH}.tar.gz"
@@ -106,12 +174,6 @@ jobs:
           echo "total_size=$TOTAL_SIZE" >> $GITHUB_OUTPUT
           echo "total_size_mb=$((TOTAL_SIZE / 1024 / 1024))" >> $GITHUB_OUTPUT
 
-          # 生成时间戳和 release 信息
-          TIMESTAMP=$(TZ="Asia/Shanghai" date +'%Y%m%d-%H%M%S')
-          RELEASE_NAME="Docker Images ($PLATFORM) - $(TZ='Asia/Shanghai' date +'%Y-%m-%d %H:%M')"
-          echo "tag_name=docker-${ARCH}-${TIMESTAMP}" >> $GITHUB_OUTPUT
-          echo "release_name=$RELEASE_NAME" >> $GITHUB_OUTPUT
-
           echo "📊 总大小: $((TOTAL_SIZE / 1024 / 1024)) MB"
           ls -lh *.tar.gz
 
@@ -120,10 +182,12 @@ jobs:
         env:
           TOTAL_SIZE: ${{ steps.pull.outputs.total_size }}
         run: |
+          # 2GB = 2147483648 bytes
           if [ "$TOTAL_SIZE" -lt 2147483648 ]; then
             echo "method=release" >> $GITHUB_OUTPUT
             echo "📁 文件 < 2GB，使用 Release 上传"
           else
+            # 5GB = 5368709120 bytes
             if [ "$TOTAL_SIZE" -lt 5368709120 ]; then
               echo "method=artifact" >> $GITHUB_OUTPUT
               echo "📁 文件 ≥ 2GB，使用 Artifact 上传（90 天保留）"
@@ -135,10 +199,11 @@ jobs:
 
       - name: 创建 GitHub Release
         if: steps.upload_method.outputs.method == 'release'
+        id: release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ steps.pull.outputs.tag_name }}
-          name: ${{ steps.pull.outputs.release_name }}
+          tag_name: docker-${{ steps.parse.outputs.arch }}-$(TZ="Asia/Shanghai" date +'%Y%m%d-%H%M%S')
+          name: "Docker Images (${{ steps.parse.outputs.platform }}) - $(TZ='Asia/Shanghai' date +'%Y-%m-%d %H:%M')"
           body: |
             ## Docker 镜像 (${{ steps.parse.outputs.platform }})
 
@@ -151,9 +216,17 @@ jobs:
             ```
             docker load -i <filename>.tar.gz
             ```
-          files: ${{ github.workspace }}/*.tar.gz
           draft: false
           prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 上传 Release Assets
+        if: steps.upload_method.outputs.method == 'release'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.release.outputs.tag_name }}
+          files: ${{ github.workspace }}/*.tar.gz
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: 上传 Artifact
@@ -180,7 +253,7 @@ jobs:
             body += `- **镜像数**：${count}\n`;
 
             if (method === 'release') {
-              const tag = '${{ steps.pull.outputs.tag_name }}';
+              const tag = '${{ steps.release.outputs.tag_name }}';
               const url = `https://github.com/${context.repo.owner}/${context.repo.repo}/releases/tag/${tag}`;
               body += `- **上传方式**：Release\n`;
               body += `- **Release 链接**：[点击下载](${url})\n`;
@@ -210,13 +283,6 @@ jobs:
               labels: ['success']
             });
 
-            await github.rest.issues.update({
-              issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              state: 'closed'
-            });
-
       - name: 失败反馈
         if: failure()
         uses: actions/github-script@v7
@@ -238,10 +304,72 @@ jobs:
               repo: context.repo.repo,
               labels: ['failure']
             });
+```
 
-            await github.rest.issues.update({
-              issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              state: 'closed'
-            });
+- [ ] **Step 2: 验证 YAML 语法**
+
+```bash
+python -c "import yaml; yaml.safe_load(open('.github/workflows/docker-downloader.yml'))"
+```
+
+- [ ] **Step 3: 提交**
+
+```bash
+git add .github/workflows/docker-downloader.yml
+git commit -m "feat: 添加完整的 docker-downloader workflow"
+```
+
+---
+
+### Task 3: 更新 README
+
+**Files:**
+- Modify: `README.md`
+
+- [ ] **Step 1: 在工具列表表格中添加 docker-downloader**
+
+在现有表格的 `deb-downloader` 行后添加新行：
+
+```markdown
+| docker-downloader | 下载 Docker 镜像并导出为 tar.gz | [提交请求](../../issues/new?template=docker-downloader.yml) |
+```
+
+- [ ] **Step 2: 在 README 末尾添加 docker-downloader 使用说明**
+
+```markdown
+
+## docker-downloader
+
+下载指定 Docker 镜像，导出为 .tar.gz 发布到 GitHub Release，用于离线加载。
+
+### 使用方式
+
+1. 点击上方「提交请求」链接
+2. 填写表单：
+   - **镜像列表**：每行一个镜像（如 `nginx:latest`、`ghcr.io/owner/repo:tag`）
+   - **CPU 架构**：选择 `linux/amd64`、`linux/arm64` 等
+3. 提交 issue，等待 Actions 自动执行
+4. 执行完成后，issue 中会回复下载链接和 `docker load` 命令
+
+### 离线加载
+
+```bash
+# 解压并加载
+docker load -i nginx_latest-linux-amd64.tar.gz
+```
+
+### 查找镜像信息
+
+| 网站 | 说明 |
+|------|------|
+| [Docker Hub](https://hub.docker.com/) | 官方 Docker 镜像仓库 |
+| [GitHub Container Registry](https://ghcr.io/) | GitHub 托管的容器镜像 |
+| [阿里云容器镜像](https://cr.console.aliyun.com/) | 阿里云容器镜像服务 |
+```
+
+- [ ] **Step 3: 提交**
+
+```bash
+git add README.md
+git commit -m "docs: README 添加 docker-downloader 使用说明"
+```

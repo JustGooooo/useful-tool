@@ -1,3 +1,4 @@
 /target/
 *.deb
 *.tar.gz
+.claude/
