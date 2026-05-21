@@ -1,0 +1,178 @@
+name: Deb 包下载
+
+on:
+  issues:
+    types: [opened]
+
+jobs:
+  download-deb:
+    runs-on: ubuntu-latest
+    if: contains(github.event.issue.labels.*.name, 'deb-downloader')
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: 解析 Issue 参数
+        id: parse
+        env:
+          ISSUE_BODY: ${{ github.event.issue.body }}
+        run: |
+          # Issue Forms 渲染格式为: ### Label\n\nvalue
+          PACKAGE_NAME=$(echo "$ISSUE_BODY" | grep -A1 "### 软件包名" | tail -1 | xargs)
+          UBUNTU_VERSION=$(echo "$ISSUE_BODY" | grep -A1 "### Ubuntu 版本" | tail -1 | xargs)
+          PACKAGE_VERSION=$(echo "$ISSUE_BODY" | grep -A1 "### 包版本（可选）" | tail -1 | xargs)
+
+          if [ -z "$PACKAGE_NAME" ]; then
+            echo "::error::未找到软件包名"
+            exit 1
+          fi
+          if [ -z "$UBUNTU_VERSION" ]; then
+            echo "::error::未找到 Ubuntu 版本"
+            exit 1
+          fi
+
+          echo "package_name=$PACKAGE_NAME" >> $GITHUB_OUTPUT
+          echo "ubuntu_version=$UBUNTU_VERSION" >> $GITHUB_OUTPUT
+          echo "package_version=$PACKAGE_VERSION" >> $GITHUB_OUTPUT
+
+          echo "📦 包名: $PACKAGE_NAME"
+          echo "🐧 Ubuntu: $UBUNTU_VERSION"
+          echo "📋 版本: ${PACKAGE_VERSION:-最新版}"
+
+      - name: 安装 debootstrap
+        run: sudo apt-get update && sudo apt-get install -y debootstrap
+
+      - name: 创建目标 Ubuntu 环境
+        env:
+          UBUNTU_VERSION: ${{ steps.parse.outputs.ubuntu_version }}
+        run: |
+          echo "正在为 Ubuntu $UBUNTU_VERSION 创建最小根文件系统..."
+          sudo debootstrap "$UBUNTU_VERSION" /target http://archive.ubuntu.com/ubuntu
+          sudo chroot /target cat /etc/os-release
+
+      - name: 下载包及依赖
+        id: download
+        env:
+          PACKAGE_NAME: ${{ steps.parse.outputs.package_name }}
+          PACKAGE_VERSION: ${{ steps.parse.outputs.package_version }}
+        run: |
+          sudo mkdir -p /target/output
+
+          if [ -n "$PACKAGE_VERSION" ] && [ "$PACKAGE_VERSION" != "留空=最新版本" ]; then
+            DOWNLOAD_TARGET="${PACKAGE_NAME}=${PACKAGE_VERSION}"
+          else
+            DOWNLOAD_TARGET="$PACKAGE_NAME"
+          fi
+
+          sudo chroot /target apt-get update
+          sudo chroot /target apt-get install -y apt-utils
+
+          sudo chroot /target bash -c "
+            cd /output && \
+            apt-get download \$(apt-cache depends --recurse \
+              --no-recommends --no-suggests \
+              --no-conflicts --no-breaks \
+              --no-replaces --no-enhances \
+              ${DOWNLOAD_TARGET} 2>/dev/null \
+              | grep '^\w' | sort -u) 2>&1 || true
+          "
+
+          DEB_COUNT=$(ls /target/output/*.deb 2>/dev/null | wc -l)
+          echo "deb_count=$DEB_COUNT" >> $GITHUB_OUTPUT
+
+          if [ "$DEB_COUNT" -eq 0 ]; then
+            echo "::error::未下载到任何 .deb 文件，包名可能不存在"
+            exit 1
+          fi
+
+          echo "✅ 共下载 $DEB_COUNT 个 .deb 文件"
+          ls -lh /target/output/*.deb
+
+      - name: 打包为 tar.gz
+        id: package
+        env:
+          PACKAGE_NAME: ${{ steps.parse.outputs.package_name }}
+          UBUNTU_VERSION: ${{ steps.parse.outputs.ubuntu_version }}
+        run: |
+          TIMESTAMP=$(TZ="Asia/Shanghai" date +'%Y%m%d-%H%M%S')
+          ARCHIVE_NAME="deb-${PACKAGE_NAME}-ubuntu${UBUNTU_VERSION}-${TIMESTAMP}.tar.gz"
+          RELEASE_NAME="${PACKAGE_NAME} for Ubuntu ${UBUNTU_VERSION} - $(TZ='Asia/Shanghai' date +'%Y-%m-%d %H:%M')"
+
+          tar -czf "$ARCHIVE_NAME" -C /target/output .
+
+          echo "archive_name=$ARCHIVE_NAME" >> $GITHUB_OUTPUT
+          echo "release_name=$RELEASE_NAME" >> $GITHUB_OUTPUT
+          echo "tag_name=deb-${PACKAGE_NAME}-ubuntu${UBUNTU_VERSION}-${TIMESTAMP}" >> $GITHUB_OUTPUT
+
+          echo "📦 已打包: $ARCHIVE_NAME ($(du -h "$ARCHIVE_NAME" | cut -f1))"
+
+      - name: 创建 GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.package.outputs.tag_name }}
+          name: ${{ steps.package.outputs.release_name }}
+          body: |
+            ## ${{ steps.parse.outputs.package_name }} for Ubuntu ${{ steps.parse.outputs.ubuntu_version }}
+
+            - **软件包**: ${{ steps.parse.outputs.package_name }}
+            - **Ubuntu 版本**: ${{ steps.parse.outputs.ubuntu_version }}
+            - **包含 .deb 文件数**: ${{ steps.download.outputs.deb_count }}
+
+            ### 离线安装方法
+
+            ```bash
+            tar -xzf ${{ steps.package.outputs.archive_name }}
+            sudo dpkg -i *.deb
+            ```
+          files: ${{ steps.package.outputs.archive_name }}
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 成功反馈
+        if: success()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const package_name = '${{ steps.parse.outputs.package_name }}';
+            const ubuntu_version = '${{ steps.parse.outputs.ubuntu_version }}';
+            const deb_count = '${{ steps.download.outputs.deb_count }}';
+            const release_url = `https://github.com/${context.repo.owner}/${context.repo.repo}/releases/tag/${{ steps.package.outputs.tag_name }}`;
+
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `✅ Deb 包下载成功！\n\n- **软件包**：${package_name}\n- **Ubuntu 版本**：${ubuntu_version}\n- **包含 .deb 文件数**：${deb_count}\n- **Release 链接**：[点击下载](${release_url})`
+            });
+
+            await github.rest.issues.addLabels({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              labels: ['success']
+            });
+
+      - name: 失败反馈
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const package_name = '${{ steps.parse.outputs.package_name }}';
+            const ubuntu_version = '${{ steps.parse.outputs.ubuntu_version }}';
+            const run_url = `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `❌ Deb 包下载失败\n\n- **软件包**：${package_name}\n- **Ubuntu 版本**：${ubuntu_version}\n- **构建日志**：[点击查看](${run_url})`
+            });
+
+            await github.rest.issues.addLabels({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              labels: ['failure']
+            });
