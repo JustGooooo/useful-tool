@@ -44,6 +44,24 @@ jobs:
           echo "🐧 Ubuntu: $UBUNTU_VERSION"
           echo "📋 版本: ${PACKAGE_VERSION:-最新版}"
 
+      - name: 更新 Issue 标题
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const pkg = '${{ steps.parse.outputs.package_name }}';
+            const ver = '${{ steps.parse.outputs.ubuntu_version }}';
+            const pkgVer = '${{ steps.parse.outputs.package_version }}';
+            let title = `[deb] ${pkg} - Ubuntu ${ver}`;
+            if (pkgVer && pkgVer !== '留空=最新版本') {
+              title += ` (${pkgVer})`;
+            }
+            await github.rest.issues.update({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              title: title
+            });
+
       - name: 安装 debootstrap
         run: sudo apt-get update && sudo apt-get install -y debootstrap
 

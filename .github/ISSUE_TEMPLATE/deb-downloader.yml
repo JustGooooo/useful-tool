@@ -1,6 +1,7 @@
 ---
 name: Deb 包下载请求
 description: 下载指定 Ubuntu 版本的 .deb 包及其依赖，打包发布到 Release
+title: "[deb] "
 labels: ["deb-downloader"]
 body:
   - type: input
