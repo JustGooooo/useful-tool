@@ -58,6 +58,25 @@ description: Use when writing or updating README.md files for GitHub projects, e
 2. Stars
 3. Last Commit（可选，展示项目活跃度）
 
+### 2.5 Star History 图表（可选）
+
+紧跟 badge 行下方，展示项目 star 增长趋势，支持 dark/light 主题自动切换：
+
+```markdown
+<p align="center">
+  <a href="https://star-history.com/#用户名/仓库名&Date">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=用户名/仓库名&type=Date&theme=dark" />
+      <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=用户名/仓库名&type=Date" />
+      <img alt="Star history" src="https://api.star-history.com/svg?repos=用户名/仓库名&type=Date" width="600" />
+    </picture>
+  </a>
+</p>
+```
+
+- 使用 `<picture>` + `<source>` 实现 dark/light 主题适配
+- Star 数量较少时可以先不加，等有一定 star 后再加
+
 ### 3. 一句话介绍 + TIP callout
 
 ```markdown

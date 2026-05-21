@@ -1,9 +1,48 @@
 # useful-tools
 
-[![GitHub](https://img.shields.io/github/license/JustGooooo/useful-tool.svg?label=LICENSE&logo=github&logoColor=%20)](https://github.com/JustGooooo/useful-tool/blob/main/LICENSE)
-![GitHub Stars](https://img.shields.io/github/stars/JustGooooo/useful-tool.svg?style=flat&logo=appveyor&label=Stars&logo=github)
+<p align="center">
+  <a href="#docker-downloader">Docker 镜像下载</a>
+  ·
+  <a href="#deb-downloader">Deb 包下载</a>
+  ·
+  <a href="#首次使用创建-label">首次使用</a>
+  ·
+  <a href="https://github.com/JustGooooo/useful-tool/issues">Issues</a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/JustGooooo/useful-tool/blob/main/LICENSE">
+    <img src="https://img.shields.io/github/license/JustGooooo/useful-tool.svg?label=LICENSE&logo=github" alt="LICENSE">
+  </a>
+  <img src="https://img.shields.io/github/stars/JustGooooo/useful-tool.svg?style=flat&logo=github&label=Stars" alt="Stars">
+  <img src="https://img.shields.io/github/last-commit/JustGooooo/useful-tool.svg?style=flat&logo=github" alt="Last Commit">
+</p>
+
+<p align="center">
+  <a href="https://star-history.com/#JustGooooo/useful-tool&Date">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=JustGooooo/useful-tool&type=Date&theme=dark" />
+      <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=JustGooooo/useful-tool&type=Date" />
+      <img alt="Star history" src="https://api.star-history.com/svg?repos=JustGooooo/useful-tool&type=Date" width="600" />
+    </picture>
+  </a>
+</p>
 
 通过 GitHub Actions 实现的自动化下载工具集，支持下载 Docker 镜像和 Ubuntu deb 包，用于离线部署。
+
+> [!TIP]
+> 提交 Issue 即可触发自动下载，无需本地环境。下载完成后会自动创建 Release 并在 Issue 中回复下载链接。
+
+## 目录
+
+- [工具列表](#工具列表)
+- [首次使用：创建 Label](#首次使用创建-label)
+- [docker-downloader](#docker-downloader)
+  - [使用步骤](#使用步骤)
+  - [查找镜像](#查找镜像)
+- [deb-downloader](#deb-downloader)
+  - [使用步骤](#使用步骤-1)
+  - [查找软件包](#查找软件包)
 
 ## 工具列表
 
@@ -16,7 +55,8 @@
 
 ## 首次使用：创建 Label
 
-Issue 模板需要对应的 Label 才能自动触发 Actions。首次使用前，请在仓库中创建以下 Label：
+> [!IMPORTANT]
+> Issue 模板需要对应的 Label 才能自动触发 Actions。首次使用前，请在仓库中创建以下 Label。
 
 | Label 名称 | 颜色建议 | 用于 |
 |------------|---------|------|
@@ -25,7 +65,7 @@ Issue 模板需要对应的 Label 才能自动触发 Actions。首次使用前�
 
 创建路径：仓库 → Issues → Labels → New label
 
-> 只需创建一次，之后提交 Issue 时会自动打上对应 Label 并触发 Actions
+只需创建一次，之后提交 Issue 时会自动打上对应 Label 并触发 Actions。
 
 ---
 
@@ -46,6 +86,9 @@ Issue 模板需要对应的 Label 才能自动触发 Actions。首次使用前�
 > 自动拉取镜像 → 打包为 tar.gz → 发布到 Release<br>
 > 如果镜像总大小超过 2GB，会自动切换到 Artifact 上传（90 天保留）<br>
 > 如果超过 5GB，抱歉，本项目无法处理
+
+> [!NOTE]
+> 大镜像可能需要较长时间，请耐心等待。可在 Actions 页面查看实时进度。
 
 #### 3、加载离线 Docker 镜像
 
@@ -79,6 +122,9 @@ docker load -i nginx_latest-linux-amd64.tar.gz
 #### 2、等待 Actions 自动执行
 
 > 通过 debootstrap 创建目标 Ubuntu 环境 → 下载包及所有递归依赖 → 打包发布到 Release
+
+> [!NOTE]
+> debootstrap 创建环境需要一定时间，首次运行可能较慢。
 
 #### 3、离线安装
 
