@@ -135,12 +135,16 @@ jobs:
             MVN_OPTS="$MVN_OPTS -DexcludeTransitive=true"
           fi
 
-          # 判断是否需要额外下载 sources/javadoc
+          # 判断是否需要额外下载 sources/javadoc（用字符串匹配，不用 grep）
           NEED_SOURCES=false
           NEED_JAVADOC=false
-          echo "$CLASSIFIERS" | grep -q "源码" && NEED_SOURCES=true
-          echo "$CLASSIFIERS" | grep -q "javadoc" && NEED_JAVADOC=true
-          echo "DEBUG inline: NEED_SOURCES=$NEED_SOURCES NEED_JAVADOC=$NEED_JAVADOC"
+          if [[ "$CLASSIFIERS" == *"源码"* ]]; then
+            NEED_SOURCES=true
+          fi
+          if [[ "$CLASSIFIERS" == *"javadoc"* ]]; then
+            NEED_JAVADOC=true
+          fi
+          echo "DEBUG: NEED_SOURCES=$NEED_SOURCES NEED_JAVADOC=$NEED_JAVADOC"
 
           # 第一步：下载主包（jar + pom）
           echo "📥 下载主包..."
