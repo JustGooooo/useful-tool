@@ -14,6 +14,21 @@
 
 ---
 
+## 首次使用：创建 Label
+
+Issue 模板需要对应的 Label 才能自动触发 Actions。首次使用前，请在仓库中创建以下 Label：
+
+| Label 名称 | 颜色建议 | 用于 |
+|------------|---------|------|
+| `docker-downloader` | 蓝色 `#0075ca` | Docker 镜像下载 |
+| `deb-downloader` | 橙色 `#d93f0b` | Deb 包下载 |
+
+创建路径：仓库 → Issues → Labels → New label
+
+> 只需创建一次，之后提交 Issue 时会自动打上对应 Label 并触发 Actions
+
+---
+
 ## docker-downloader
 
 下载指定 Docker 镜像，导出为 `.tar.gz` 发布到 GitHub Release，用于离线 `docker load`。
