@@ -79,7 +79,8 @@ jobs:
             ["24.04"]="noble"
             ["24.10"]="oracular"
             ["25.04"]="plucky"
-            ["26.04"]="questing"
+            ["25.10"]="questing"
+            ["26.04"]="resolute"
           )
           CODENAME="${CODENAMES[$UBUNTU_VERSION]:-$UBUNTU_VERSION}"
 
