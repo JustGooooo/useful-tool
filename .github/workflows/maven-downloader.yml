@@ -150,6 +150,7 @@ jobs:
           mvn -f /tmp/pom.xml dependency:copy-dependencies $MVN_OPTS
 
           # 第二步：额外下载 sources（如有）
+          echo "DEBUG NEED_SOURCES=$NEED_SOURCES NEED_JAVADOC=$NEED_JAVADOC"
           if [ "$NEED_SOURCES" = true ]; then
             echo "📥 下载 sources..."
             mvn -f /tmp/pom.xml dependency:copy-dependencies $MVN_OPTS -Dclassifier=sources || echo "⚠️ 部分 sources 下载失败（库可能未发布 sources）"
