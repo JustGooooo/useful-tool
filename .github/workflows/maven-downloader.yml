@@ -138,12 +138,9 @@ jobs:
           # 判断是否需要额外下载 sources/javadoc
           NEED_SOURCES=false
           NEED_JAVADOC=false
-          if echo "$CLASSIFIERS" | grep -q "源码"; then
-            NEED_SOURCES=true
-          fi
-          if echo "$CLASSIFIERS" | grep -q "javadoc"; then
-            NEED_JAVADOC=true
-          fi
+          echo "$CLASSIFIERS" | grep -q "源码" && NEED_SOURCES=true
+          echo "$CLASSIFIERS" | grep -q "javadoc" && NEED_JAVADOC=true
+          echo "DEBUG inline: NEED_SOURCES=$NEED_SOURCES NEED_JAVADOC=$NEED_JAVADOC"
 
           # 第一步：下载主包（jar + pom）
           echo "📥 下载主包..."
