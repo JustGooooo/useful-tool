@@ -28,6 +28,10 @@ jobs:
           PYTHON_VERSION=$(extract_field "### Python 版本")
           PLATFORM=$(extract_field "### 目标平台")
           PACKAGE_VERSION=$(extract_field "### 包版本（可选）")
+          # Issue Forms 留空字段返回 "_No response_"
+          if [ "$PACKAGE_VERSION" = "_No response_" ]; then
+            PACKAGE_VERSION=""
+          fi
 
           if [ -z "$PACKAGE_NAME" ]; then
             echo "::error::未找到包名"
@@ -61,7 +65,7 @@ jobs:
             const platform = '${{ steps.parse.outputs.platform }}';
             const pkgVer = '${{ steps.parse.outputs.package_version }}';
             let title = `[pip] ${pkg} - Python ${pyVer} (${platform})`;
-            if (pkgVer && pkgVer !== '留空=最新版本') {
+            if (pkgVer && pkgVer !== '_No response_') {
               title += ` ${pkgVer}`;
             }
             await github.rest.issues.update({
@@ -86,7 +90,7 @@ jobs:
         run: |
           mkdir -p /tmp/pip-output
 
-          if [ -n "$PACKAGE_VERSION" ] && [ "$PACKAGE_VERSION" != "留空=最新版本" ]; then
+          if [ -n "$PACKAGE_VERSION" ]; then
             DOWNLOAD_TARGET="${PACKAGE_NAME}==${PACKAGE_VERSION}"
           else
             DOWNLOAD_TARGET="$PACKAGE_NAME"
