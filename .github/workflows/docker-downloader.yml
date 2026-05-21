@@ -127,13 +127,19 @@ jobs:
             fi
           fi
 
+          # 生成时间戳（用于 tag 和 release name）
+          TIMESTAMP=$(TZ="Asia/Shanghai" date +'%Y%m%d-%H%M%S')
+          DISPLAY_TIME=$(TZ="Asia/Shanghai" date +'%Y-%m-%d %H:%M')
+          echo "timestamp=$TIMESTAMP" >> $GITHUB_OUTPUT
+          echo "display_time=$DISPLAY_TIME" >> $GITHUB_OUTPUT
+
       - name: 创建 GitHub Release
         if: steps.upload_method.outputs.method == 'release'
         id: release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: docker-${{ steps.parse.outputs.arch }}-$(TZ="Asia/Shanghai" date +'%Y%m%d-%H%M%S')
-          name: "Docker Images (${{ steps.parse.outputs.platform }}) - $(TZ='Asia/Shanghai' date +'%Y-%m-%d %H:%M')"
+          tag_name: docker-${{ steps.parse.outputs.arch }}-${{ steps.upload_method.outputs.timestamp }}
+          name: "Docker Images (${{ steps.parse.outputs.platform }}) - ${{ steps.upload_method.outputs.display_time }}"
           body: |
             ## Docker 镜像 (${{ steps.parse.outputs.platform }})
 
