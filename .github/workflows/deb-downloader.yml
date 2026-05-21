@@ -7,6 +7,9 @@ on:
 jobs:
   download-deb:
     runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      contents: write
     if: contains(github.event.issue.labels.*.name, 'deb-downloader')
     steps:
       - name: Checkout
