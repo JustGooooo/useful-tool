@@ -74,7 +74,7 @@ jobs:
       - name: 安装 Python
         uses: actions/setup-python@v5
         with:
-          python-version: ${{ steps.parse.outputs.python_version }}
+          python-version: "3.12"
 
       - name: 下载 pip 包及依赖
         id: download
