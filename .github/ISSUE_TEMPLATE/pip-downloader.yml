@@ -1,0 +1,46 @@
+---
+name: Pip 包下载请求
+description: 下载指定 Python 版本和平台的 pip wheel 包及其依赖，打包发布到 Release
+title: "[pip] "
+labels: ["pip-downloader"]
+body:
+  - type: input
+    id: package_name
+    attributes:
+      label: 包名
+      description: "pip 包名（如 numpy、torch、requests）"
+      placeholder: "numpy"
+    validations:
+      required: true
+
+  - type: input
+    id: python_version
+    attributes:
+      label: Python 版本
+      description: "Python 版本号（如 3.10、3.11、3.12、3.13）"
+      placeholder: "3.12"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: platform
+    attributes:
+      label: 目标平台
+      options:
+        - "linux_x86_64"
+        - "linux_aarch64"
+        - "win_amd64"
+        - "win32"
+        - "macosx_x86_64"
+        - "macosx_arm64"
+    validations:
+      required: true
+
+  - type: input
+    id: package_version
+    attributes:
+      label: 包版本（可选）
+      description: "留空则下载最新版本"
+      placeholder: "留空=最新版本"
+    validations:
+      required: false
