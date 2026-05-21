@@ -119,27 +119,44 @@ jobs:
           EOF
 
           # 构建 mvn 参数
-          MVN_OPTS="-DoutputDirectory=/tmp/maven-output -Dmdep.useRepositoryLayout=true -DincludePomFiles=true -B -q"
+          # -Dmdep.copyPom=true: 同时下载 pom 文件
+          # -Dmdep.useRepositoryLayout=true: 保留 Maven 仓库目录结构
+          MVN_OPTS="-DoutputDirectory=/tmp/maven-output -Dmdep.useRepositoryLayout=true -Dmdep.copyPom=true -B -q"
 
           # 是否包含传递依赖
           if [ "$TRANSITIVE" = "否，仅下载主包" ]; then
             MVN_OPTS="$MVN_OPTS -DexcludeTransitive=true"
           fi
 
-          # 下载主包
+          # 判断是否需要额外下载 sources/javadoc
+          NEED_SOURCES=false
+          NEED_JAVADOC=false
+          if echo "$CLASSIFIERS" | grep -q "源码"; then
+            NEED_SOURCES=true
+          fi
+          if echo "$CLASSIFIERS" | grep -q "javadoc"; then
+            NEED_JAVADOC=true
+          fi
+
+          # 第一步：下载主包（jar + pom）
+          echo "📥 下载主包..."
           mvn -f /tmp/pom.xml dependency:copy-dependencies $MVN_OPTS
 
-          # 下载 sources
-          if echo "$CLASSIFIERS" | grep -q "源码"; then
-            echo "📥 额外下载 sources..."
-            mvn -f /tmp/pom.xml dependency:copy-dependencies $MVN_OPTS -DincludeClassifiers=sources
+          # 第二步：额外下载 sources（如有）
+          if [ "$NEED_SOURCES" = true ]; then
+            echo "📥 下载 sources..."
+            mvn -f /tmp/pom.xml dependency:copy-dependencies $MVN_OPTS -Dclassifier=sources
           fi
 
-          # 下载 javadoc
-          if echo "$CLASSIFIERS" | grep -q "javadoc"; then
-            echo "📥 额外下载 javadoc..."
-            mvn -f /tmp/pom.xml dependency:copy-dependencies $MVN_OPTS -DincludeClassifiers=javadoc
+          # 第三步：额外下载 javadoc（如有）
+          if [ "$NEED_JAVADOC" = true ]; then
+            echo "📥 下载 javadoc..."
+            mvn -f /tmp/pom.xml dependency:copy-dependencies $MVN_OPTS -Dclassifier=javadoc
           fi
+
+          # 显示下载结果
+          echo "=== 下载结果 ==="
+          find /tmp/maven-output -type f | sort
 
           # 统计
           JAR_COUNT=$(find /tmp/maven-output -name "*.jar" | wc -l)
