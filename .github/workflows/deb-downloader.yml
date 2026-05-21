@@ -2,7 +2,7 @@ name: Deb 包下载
 
 on:
   issues:
-    types: [opened]
+    types: [opened, labeled]
 
 jobs:
   download-deb:
