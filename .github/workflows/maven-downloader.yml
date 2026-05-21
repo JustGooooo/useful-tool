@@ -119,7 +119,7 @@ jobs:
           EOF
 
           # 构建 mvn 参数
-          MVN_OPTS="-DoutputDirectory=/tmp/maven-output -Dmdep.useRepositoryLayout=true -B -q"
+          MVN_OPTS="-DoutputDirectory=/tmp/maven-output -Dmdep.useRepositoryLayout=true -DincludePomFiles=true -B -q"
 
           # 是否包含传递依赖
           if [ "$TRANSITIVE" = "否，仅下载主包" ]; then
@@ -132,13 +132,13 @@ jobs:
           # 下载 sources
           if echo "$CLASSIFIERS" | grep -q "源码"; then
             echo "📥 额外下载 sources..."
-            mvn -f /tmp/pom.xml dependency:copy-dependencies $MVN_OPTS -Dclassifier=sources
+            mvn -f /tmp/pom.xml dependency:copy-dependencies $MVN_OPTS -DincludeClassifiers=sources
           fi
 
           # 下载 javadoc
           if echo "$CLASSIFIERS" | grep -q "javadoc"; then
             echo "📥 额外下载 javadoc..."
-            mvn -f /tmp/pom.xml dependency:copy-dependencies $MVN_OPTS -Dclassifier=javadoc
+            mvn -f /tmp/pom.xml dependency:copy-dependencies $MVN_OPTS -DincludeClassifiers=javadoc
           fi
 
           # 统计

@@ -17,7 +17,7 @@ body:
     id: python_version
     attributes:
       label: Python 版本
-      description: "Python 版本号（如 3.10、3.11、3.12、3.13）"
+      description: "目标 Python 版本号。注意：PyPI 上必须有该版本的 wheel，太新的版本（如 3.14+）可能没有预编译包"
       placeholder: "3.12"
     validations:
       required: true
