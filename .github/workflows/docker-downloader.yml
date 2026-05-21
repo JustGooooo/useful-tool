@@ -106,6 +106,12 @@ jobs:
           echo "total_size=$TOTAL_SIZE" >> $GITHUB_OUTPUT
           echo "total_size_mb=$((TOTAL_SIZE / 1024 / 1024))" >> $GITHUB_OUTPUT
 
+          # 生成时间戳和 release 信息
+          TIMESTAMP=$(TZ="Asia/Shanghai" date +'%Y%m%d-%H%M%S')
+          RELEASE_NAME="Docker Images ($PLATFORM) - $(TZ='Asia/Shanghai' date +'%Y-%m-%d %H:%M')"
+          echo "tag_name=docker-${ARCH}-${TIMESTAMP}" >> $GITHUB_OUTPUT
+          echo "release_name=$RELEASE_NAME" >> $GITHUB_OUTPUT
+
           echo "📊 总大小: $((TOTAL_SIZE / 1024 / 1024)) MB"
           ls -lh *.tar.gz
 
@@ -127,19 +133,13 @@ jobs:
             fi
           fi
 
-          # 生成时间戳（用于 tag 和 release name）
-          TIMESTAMP=$(TZ="Asia/Shanghai" date +'%Y%m%d-%H%M%S')
-          DISPLAY_TIME=$(TZ="Asia/Shanghai" date +'%Y-%m-%d %H:%M')
-          echo "timestamp=$TIMESTAMP" >> $GITHUB_OUTPUT
-          echo "display_time=$DISPLAY_TIME" >> $GITHUB_OUTPUT
-
       - name: 创建 GitHub Release
         if: steps.upload_method.outputs.method == 'release'
         id: release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: docker-${{ steps.parse.outputs.arch }}-${{ steps.upload_method.outputs.timestamp }}
-          name: "Docker Images (${{ steps.parse.outputs.platform }}) - ${{ steps.upload_method.outputs.display_time }}"
+          tag_name: ${{ steps.pull.outputs.tag_name }}
+          name: ${{ steps.pull.outputs.release_name }}
           body: |
             ## Docker 镜像 (${{ steps.parse.outputs.platform }})
 
