@@ -99,6 +99,8 @@ jobs:
           VERSION: ${{ steps.parse.outputs.version }}
           REPO_URL: ${{ steps.parse.outputs.repo_url }}
           MAVEN_COORD: ${{ steps.parse.outputs.maven_coord }}
+          CLASSIFIERS: ${{ steps.parse.outputs.classifiers }}
+          TRANSITIVE: ${{ steps.parse.outputs.transitive }}
         run: |
           mkdir -p /tmp/maven-output
 
@@ -140,18 +142,21 @@ jobs:
           mvn -f /tmp/pom.xml dependency:copy-dependencies $MVN_OPTS
 
           # 根据 CLASSIFIERS 内容下载 sources/javadoc
-          # 用文件标记判断（避免 set -e 导致变量赋值失败）
-          rm -f /tmp/need_sources /tmp/need_javadoc
-          echo "$CLASSIFIERS" | grep -q "源码" && touch /tmp/need_sources || true
-          echo "$CLASSIFIERS" | grep -q "javadoc" && touch /tmp/need_javadoc || true
-          echo "DEBUG: sources=$(test -f /tmp/need_sources && echo YES || echo NO) javadoc=$(test -f /tmp/need_javadoc && echo YES || echo NO)"
+          NEED_SOURCES=false
+          NEED_JAVADOC=false
+          if echo "$CLASSIFIERS" | grep -q "源码"; then
+            NEED_SOURCES=true
+          fi
+          if echo "$CLASSIFIERS" | grep -q "javadoc"; then
+            NEED_JAVADOC=true
+          fi
 
-          if [ -f /tmp/need_sources ]; then
+          if [ "$NEED_SOURCES" = true ]; then
             echo "📥 下载 sources..."
             mvn -f /tmp/pom.xml dependency:copy-dependencies $MVN_OPTS -Dclassifier=sources -Dmdep.failOnMissingClassifierArtifact=false || true
           fi
 
-          if [ -f /tmp/need_javadoc ]; then
+          if [ "$NEED_JAVADOC" = true ]; then
             echo "📥 下载 javadoc..."
             mvn -f /tmp/pom.xml dependency:copy-dependencies $MVN_OPTS -Dclassifier=javadoc -Dmdep.failOnMissingClassifierArtifact=false || true
           fi
