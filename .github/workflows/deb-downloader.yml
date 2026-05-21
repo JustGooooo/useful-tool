@@ -2,7 +2,7 @@ name: Deb 包下载
 
 on:
   issues:
-    types: [opened, labeled]
+    types: [labeled]
 
 jobs:
   download-deb:
@@ -72,8 +72,19 @@ jobs:
         env:
           UBUNTU_VERSION: ${{ steps.parse.outputs.ubuntu_version }}
         run: |
-          echo "正在为 Ubuntu $UBUNTU_VERSION 创建最小根文件系统..."
-          sudo debootstrap "$UBUNTU_VERSION" /target http://archive.ubuntu.com/ubuntu
+          # 版本号 → codename 映射（debootstrap 需要 codename）
+          declare -A CODENAMES=(
+            ["20.04"]="focal"
+            ["22.04"]="jammy"
+            ["24.04"]="noble"
+            ["24.10"]="oracular"
+            ["25.04"]="plucky"
+            ["26.04"]="questing"
+          )
+          CODENAME="${CODENAMES[$UBUNTU_VERSION]:-$UBUNTU_VERSION}"
+
+          echo "正在为 Ubuntu $UBUNTU_VERSION ($CODENAME) 创建最小根文件系统..."
+          sudo debootstrap "$CODENAME" /target http://archive.ubuntu.com/ubuntu
           sudo chroot /target cat /etc/os-release
 
       - name: 下载包及依赖
