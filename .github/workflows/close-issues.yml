@@ -1,0 +1,30 @@
+name: 自动关闭已处理的 Issue
+
+on:
+  issues:
+    types: [labeled]
+
+jobs:
+  close-issue:
+    runs-on: ubuntu-latest
+    if: contains(github.event.issue.labels.*.name, 'success') || contains(github.event.issue.labels.*.name, 'failure')
+    permissions:
+      issues: write
+    steps:
+      - name: 关闭 Issue
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const labels = context.payload.issue.labels.map(l => l.name);
+            const hasSuccess = labels.includes('success');
+            const hasFailure = labels.includes('failure');
+
+            if (hasSuccess || hasFailure) {
+              await github.rest.issues.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                state: 'closed'
+              });
+              console.log(`Issue #${context.issue.number} 已关闭`);
+            }
