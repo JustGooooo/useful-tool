@@ -135,7 +135,6 @@ jobs:
 
       - name: 创建 GitHub Release
         if: steps.upload_method.outputs.method == 'release'
-        id: release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.pull.outputs.tag_name }}
@@ -152,17 +151,9 @@ jobs:
             ```
             docker load -i <filename>.tar.gz
             ```
+          files: ${{ github.workspace }}/*.tar.gz
           draft: false
           prerelease: false
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: 上传 Release Assets
-        if: steps.upload_method.outputs.method == 'release'
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ steps.release.outputs.tag_name }}
-          files: ${{ github.workspace }}/*.tar.gz
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: 上传 Artifact
@@ -189,7 +180,7 @@ jobs:
             body += `- **镜像数**：${count}\n`;
 
             if (method === 'release') {
-              const tag = '${{ steps.release.outputs.tag_name }}';
+              const tag = '${{ steps.pull.outputs.tag_name }}';
               const url = `https://github.com/${context.repo.owner}/${context.repo.repo}/releases/tag/${tag}`;
               body += `- **上传方式**：Release\n`;
               body += `- **Release 链接**：[点击下载](${url})\n`;
