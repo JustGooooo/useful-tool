@@ -1,0 +1,284 @@
+name: Maven 包下载
+
+on:
+  issues:
+    types: [labeled]
+
+jobs:
+  download-maven:
+    runs-on: ubuntu-latest
+    if: contains(github.event.issue.labels.*.name, 'maven-downloader')
+    permissions:
+      issues: write
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: 解析 Issue 参数
+        id: parse
+        env:
+          ISSUE_BODY: ${{ github.event.issue.body }}
+        run: |
+          extract_field() {
+            echo "$ISSUE_BODY" | grep -A10 "$1" | grep -v "^###" | grep -v "^--$" | sed '/^$/d' | head -1 | xargs
+          }
+
+          MAVEN_COORD=$(extract_field "### Maven 坐标")
+          REPO_URL=$(extract_field "### 仓库地址（可选）")
+
+          # Issue Forms 留空字段返回 "_No response_"
+          if [ "$REPO_URL" = "_No response_" ]; then
+            REPO_URL=""
+          fi
+
+          if [ -z "$MAVEN_COORD" ]; then
+            echo "::error::未找到 Maven 坐标"
+            exit 1
+          fi
+
+          # 解析 groupId:artifactId:version
+          GROUP_ID=$(echo "$MAVEN_COORD" | cut -d: -f1)
+          ARTIFACT_ID=$(echo "$MAVEN_COORD" | cut -d: -f2)
+          VERSION=$(echo "$MAVEN_COORD" | cut -d: -f3)
+
+          if [ -z "$GROUP_ID" ] || [ -z "$ARTIFACT_ID" ] || [ -z "$VERSION" ]; then
+            echo "::error::Maven 坐标格式错误，应为 groupId:artifactId:version"
+            exit 1
+          fi
+
+          echo "maven_coord=$MAVEN_COORD" >> $GITHUB_OUTPUT
+          echo "group_id=$GROUP_ID" >> $GITHUB_OUTPUT
+          echo "artifact_id=$ARTIFACT_ID" >> $GITHUB_OUTPUT
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "repo_url=$REPO_URL" >> $GITHUB_OUTPUT
+
+          echo "📦 坐标: $MAVEN_COORD"
+          echo "🏢 Group: $GROUP_ID"
+          echo "📦 Artifact: $ARTIFACT_ID"
+          echo "📋 Version: $VERSION"
+          echo "🔗 仓库: ${REPO_URL:-Maven Central}"
+
+      - name: 更新 Issue 标题
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const coord = '${{ steps.parse.outputs.maven_coord }}';
+            const repoUrl = '${{ steps.parse.outputs.repo_url }}';
+            let title = `[maven] ${coord}`;
+            if (repoUrl) title += ' (custom repo)';
+            await github.rest.issues.update({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              title: title
+            });
+
+      - name: 安装 Maven
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: 下载 Maven 包及依赖
+        id: download
+        env:
+          GROUP_ID: ${{ steps.parse.outputs.group_id }}
+          ARTIFACT_ID: ${{ steps.parse.outputs.artifact_id }}
+          VERSION: ${{ steps.parse.outputs.version }}
+          REPO_URL: ${{ steps.parse.outputs.repo_url }}
+          MAVEN_COORD: ${{ steps.parse.outputs.maven_coord }}
+        run: |
+          mkdir -p /tmp/maven-output
+
+          # 创建临时 pom.xml 用于下载依赖
+          REPO_SECTION=""
+          if [ -n "$REPO_URL" ]; then
+            REPO_SECTION="<repositories><repository><id>custom</id><url>${REPO_URL}</url></repository></repositories>"
+          fi
+
+          cat > /tmp/pom.xml <<EOF
+          <project>
+            <modelVersion>4.0.0</modelVersion>
+            <groupId>temp</groupId>
+            <artifactId>temp</artifactId>
+            <version>1.0</version>
+            ${REPO_SECTION}
+            <dependencies>
+              <dependency>
+                <groupId>${GROUP_ID}</groupId>
+                <artifactId>${ARTIFACT_ID}</artifactId>
+                <version>${VERSION}</version>
+              </dependency>
+            </dependencies>
+          </project>
+          EOF
+
+          # 下载主包及所有传递依赖，保留 Maven 仓库结构
+          mvn -f /tmp/pom.xml dependency:copy-dependencies \
+            -DoutputDirectory=/tmp/maven-output \
+            -Dmdep.useRepositoryLayout=true \
+            -DincludeScope=runtime \
+            -B -q
+
+          # 统计
+          JAR_COUNT=$(find /tmp/maven-output -name "*.jar" | wc -l)
+          POM_COUNT=$(find /tmp/maven-output -name "*.pom" | wc -l)
+          TOTAL_SIZE=$(du -sb /tmp/maven-output | cut -f1)
+
+          echo "jar_count=$JAR_COUNT" >> $GITHUB_OUTPUT
+          echo "pom_count=$POM_COUNT" >> $GITHUB_OUTPUT
+          echo "total_size=$TOTAL_SIZE" >> $GITHUB_OUTPUT
+          echo "total_size_mb=$((TOTAL_SIZE / 1024 / 1024))" >> $GITHUB_OUTPUT
+
+          echo "✅ 共下载 $JAR_COUNT 个 .jar，$POM_COUNT 个 .pom"
+          echo "📊 总大小: $((TOTAL_SIZE / 1024 / 1024)) MB"
+
+      - name: 打包为 tar.gz
+        id: package
+        env:
+          ARTIFACT_ID: ${{ steps.parse.outputs.artifact_id }}
+          VERSION: ${{ steps.parse.outputs.version }}
+        run: |
+          TIMESTAMP=$(TZ="Asia/Shanghai" date +'%Y%m%d-%H%M%S')
+          ARCHIVE_NAME="maven-${ARTIFACT_ID}-${VERSION}-${TIMESTAMP}.tar.gz"
+          RELEASE_NAME="${ARTIFACT_ID}-${VERSION} - $(TZ='Asia/Shanghai' date +'%Y-%m-%d %H:%M')"
+
+          tar -czf "$ARCHIVE_NAME" -C /tmp/maven-output .
+
+          echo "archive_name=$ARCHIVE_NAME" >> $GITHUB_OUTPUT
+          echo "release_name=$RELEASE_NAME" >> $GITHUB_OUTPUT
+          echo "tag_name=maven-${ARTIFACT_ID}-${VERSION}-${TIMESTAMP}" >> $GITHUB_OUTPUT
+
+          echo "📦 已打包: $ARCHIVE_NAME ($(du -h "$ARCHIVE_NAME" | cut -f1))"
+
+      - name: 选择上传方式
+        id: upload_method
+        env:
+          TOTAL_SIZE: ${{ steps.download.outputs.total_size }}
+        run: |
+          if [ "$TOTAL_SIZE" -lt 2147483648 ]; then
+            echo "method=release" >> $GITHUB_OUTPUT
+            echo "📁 文件 < 2GB，使用 Release 上传"
+          else
+            if [ "$TOTAL_SIZE" -lt 5368709120 ]; then
+              echo "method=artifact" >> $GITHUB_OUTPUT
+              echo "📁 文件 ≥ 2GB，使用 Artifact 上传（90 天保留）"
+            else
+              echo "::error::文件超过 5GB，无法上传"
+              exit 1
+            fi
+          fi
+
+      - name: 创建 GitHub Release
+        if: steps.upload_method.outputs.method == 'release'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.package.outputs.tag_name }}
+          name: ${{ steps.package.outputs.release_name }}
+          body: |
+            ## ${{ steps.parse.outputs.maven_coord }}
+
+            - **坐标**: ${{ steps.parse.outputs.maven_coord }}
+            - **包含 .jar 文件数**: ${{ steps.download.outputs.jar_count }}
+            - **包含 .pom 文件数**: ${{ steps.download.outputs.pom_count }}
+            - **总大小**: ${{ steps.download.outputs.total_size_mb }} MB
+
+            ### 导入本地 Maven 仓库
+
+            ```bash
+            tar -xzf ${{ steps.package.outputs.archive_name }} -C ~/.m2/repository
+            ```
+
+            ### 导入 Nexus
+
+            1. 打开 Nexus → Server Administration → Import Maven Repository
+            2. 上传解压后的目录，或通过 Nexus REST API 批量导入
+          files: ${{ steps.package.outputs.archive_name }}
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 上传 Artifact
+        if: steps.upload_method.outputs.method == 'artifact'
+        uses: actions/upload-artifact@v4
+        with:
+          name: maven-${{ steps.parse.outputs.artifact_id }}-${{ steps.parse.outputs.version }}
+          path: /tmp/maven-output
+          retention-days: 90
+
+      - name: 成功反馈
+        if: success()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const coord = '${{ steps.parse.outputs.maven_coord }}';
+            const jarCount = '${{ steps.download.outputs.jar_count }}';
+            const method = '${{ steps.upload_method.outputs.method }}';
+
+            let body = `✅ Maven 包下载成功！\n\n`;
+            body += `- **坐标**：${coord}\n`;
+            body += `- **包含 .jar 文件数**：${jarCount}\n`;
+
+            if (method === 'release') {
+              const tag = '${{ steps.package.outputs.tag_name }}';
+              const url = `https://github.com/${context.repo.owner}/${context.repo.repo}/releases/tag/${tag}`;
+              body += `- **上传方式**：Release\n`;
+              body += `- **Release 链接**：[点击下载](${url})\n`;
+            } else {
+              body += `- **上传方式**：Artifact（90 天保留）\n`;
+              body += `\n⚠️ 文件超过 2GB，已上传到 Artifact，90 天后自动删除。\n`;
+            }
+
+            body += `\n### 导入本地仓库\n\`\`\`bash\ntar -xzf maven-*.tar.gz -C ~/.m2/repository\n\`\`\``;
+
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: body
+            });
+
+            await github.rest.issues.addLabels({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              labels: ['success']
+            });
+
+            await github.rest.issues.update({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'closed'
+            });
+
+      - name: 失败反馈
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const coord = '${{ steps.parse.outputs.maven_coord }}';
+            const run_url = `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `❌ Maven 包下载失败\n\n- **坐标**：${coord}\n- **构建日志**：[点击查看](${run_url})`
+            });
+
+            await github.rest.issues.addLabels({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              labels: ['failure']
+            });
+
+            await github.rest.issues.update({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'closed'
+            });

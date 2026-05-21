@@ -7,6 +7,8 @@
   ·
   <a href="#pip-downloader">Pip 包下载</a>
   ·
+  <a href="#maven-downloader">Maven 包下载</a>
+  ·
   <a href="#首次使用创建-label">首次使用</a>
   ·
   <a href="https://github.com/JustGooooo/useful-tool/issues">Issues</a>
@@ -48,6 +50,8 @@
 - [pip-downloader](#pip-downloader)
   - [使用步骤](#使用步骤-2)
   - [查找 pip 包](#查找-pip-包)
+- [maven-downloader](#maven-downloader)
+  - [使用步骤](#使用步骤-3)
 
 ## 工具列表
 
@@ -56,6 +60,7 @@
 | **docker-downloader** | 下载 Docker 镜像并打包为 tar.gz | [![Issue](https://img.shields.io/badge/提交请求-Docker-blue?style=flat&logo=docker)](https://github.com/JustGooooo/useful-tool/issues/new?template=docker-downloader.yml) |
 | **deb-downloader** | 下载 Ubuntu deb 包及所有依赖 | [![Issue](https://img.shields.io/badge/提交请求-Deb-orange?style=flat&logo=ubuntu)](https://github.com/JustGooooo/useful-tool/issues/new?template=deb-downloader.yml) |
 | **pip-downloader** | 下载 pip wheel 包（跨平台/跨版本） | [![Issue](https://img.shields.io/badge/提交请求-Pip-green?style=flat&logo=python)](https://github.com/JustGooooo/useful-tool/issues/new?template=pip-downloader.yml) |
+| **maven-downloader** | 下载 Maven 包及依赖（支持导入 Nexus） | [![Issue](https://img.shields.io/badge/提交请求-Maven-red?style=flat&logo=apachemaven)](https://github.com/JustGooooo/useful-tool/issues/new?template=maven-downloader.yml) |
 
 ---
 
@@ -69,6 +74,7 @@
 | `docker-downloader` | 蓝色 `#0075ca` | Docker 镜像下载 |
 | `deb-downloader` | 橙色 `#d93f0b` | Deb 包下载 |
 | `pip-downloader` | 绿色 `#0e8a16` | Pip 包下载 |
+| `maven-downloader` | 红色 `#e11d48` | Maven 包下载 |
 
 创建路径：仓库 → Issues → Labels → New label
 
@@ -186,3 +192,42 @@ pip install --no-index --find-links=. numpy
 | [PyPI](https://pypi.org/) | Python 官方包索引 |
 | [清华镜像 (TUNA)](https://mirrors.tuna.tsinghua.edu.cn/pypi/) | 国内加速 |
 | [阿里云镜像](https://mirrors.aliyun.com/pypi/) | 国内加速 |
+
+---
+
+## maven-downloader
+
+下载指定 Maven 包及其所有传递依赖，打包为 `.tar.gz` 发布到 GitHub Release。目录结构与 Maven 仓库一致，可直接导入 Nexus 或本地 `~/.m2/repository`。
+
+> [!NOTE]
+> 下载的包保留 Maven 仓库目录结构（`groupId/artifactId/version/`），可直接解压到 `~/.m2/repository` 使用。
+
+### 使用步骤
+
+#### 1、点击上方「提交请求」按钮，填写 Issue 表单
+
+> **Maven 坐标**：格式 `groupId:artifactId:version`，如 `org.apache.commons:commons-lang3:3.14.0`<br>
+> **仓库地址**（可选）：留空使用 Maven Central，可填写私有仓库地址<br>
+> 标题会自动生成，无需手动填写
+
+#### 2、等待 Actions 自动执行
+
+> 自动解析坐标 → 下载包及所有传递依赖 → 保留仓库目录结构 → 打包发布到 Release
+
+#### 3、导入本地仓库
+
+```bash
+tar -xzf maven-commons-lang3-3.14.0-*.tar.gz -C ~/.m2/repository
+```
+
+#### 4、导入 Nexus
+
+> 打开 Nexus → Server Administration → Import Maven Repository<br>
+> 上传解压后的目录，或通过 Nexus REST API 批量导入
+
+### 查找 Maven 包
+
+| 网站 | 说明 |
+|------|------|
+| [Maven Central](https://search.maven.org/) | Maven 官方仓库搜索 |
+| [阿里云 Maven 镜像](https://maven.aliyun.com/) | 国内加速 |

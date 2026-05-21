@@ -1,0 +1,23 @@
+---
+name: Maven 包下载请求
+description: 下载指定 Maven 包及其所有依赖，打包发布到 Release，支持导入 Nexus 或本地仓库
+title: "[maven] "
+labels: ["maven-downloader"]
+body:
+  - type: input
+    id: maven_coordinate
+    attributes:
+      label: Maven 坐标
+      description: "格式：groupId:artifactId:version"
+      placeholder: "org.apache.commons:commons-lang3:3.14.0"
+    validations:
+      required: true
+
+  - type: input
+    id: repository_url
+    attributes:
+      label: 仓库地址（可选）
+      description: "留空则使用 Maven Central，可填写私有仓库地址"
+      placeholder: "留空=Maven Central"
+    validations:
+      required: false
