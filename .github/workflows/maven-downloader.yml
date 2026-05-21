@@ -61,7 +61,14 @@ jobs:
           echo "🏢 Group: $GROUP_ID"
           echo "📦 Artifact: $ARTIFACT_ID"
           echo "📋 Version: $VERSION"
+          echo "🏷️ 附加内容: $CLASSIFIERS"
+          echo "🔗 依赖: $TRANSITIVE"
           echo "🔗 仓库: ${REPO_URL:-Maven Central}"
+
+          # 调试：显示 CLASSIFIERS 的原始值和 grep 结果
+          echo "DEBUG CLASSIFIERS raw: [$CLASSIFIERS]"
+          echo "$CLASSIFIERS" | grep -q "源码" && echo "DEBUG grep 源码: 匹配" || echo "DEBUG grep 源码: 不匹配"
+          echo "$CLASSIFIERS" | grep -q "javadoc" && echo "DEBUG grep javadoc: 匹配" || echo "DEBUG grep javadoc: 不匹配"
 
       - name: 更新 Issue 标题
         uses: actions/github-script@v7
