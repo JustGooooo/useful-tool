@@ -30,3 +30,13 @@ body:
       placeholder: "留空=最新版本"
     validations:
       required: false
+
+  - type: textarea
+    id: custom_repos
+    attributes:
+      label: 自定义仓库（可选）
+      description: "每行一个，格式：仓库地址|GPG Key URL（无 GPG Key 则只填仓库地址）"
+      placeholder: |
+        https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list|https://nvidia.github.io/libnvidia-container/gpgkey
+    validations:
+      required: false

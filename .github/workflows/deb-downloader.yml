@@ -47,6 +47,16 @@ jobs:
           echo "ubuntu_version=$UBUNTU_VERSION" >> $GITHUB_OUTPUT
           echo "package_version=$PACKAGE_VERSION" >> $GITHUB_OUTPUT
 
+          # 提取自定义仓库（textarea，可能多行）
+          CUSTOM_REPOS=$(echo "$ISSUE_BODY" | sed -n '/### 自定义仓库（可选）/,$ p' | grep -v "^###" | grep -v "^--$" | sed '/^$/d' | sed 's/^[[:space:]]*//')
+          if [ "$CUSTOM_REPOS" = "_No response_" ]; then
+            CUSTOM_REPOS=""
+          fi
+          echo "custom_repos<<EOF" >> $GITHUB_OUTPUT
+          echo "$CUSTOM_REPOS" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+          echo "🔗 自定义源: ${CUSTOM_REPOS:-无}"
+
           echo "📦 包名: $PACKAGE_NAME"
           echo "🐧 Ubuntu: $UBUNTU_VERSION"
           echo "📋 版本: ${PACKAGE_VERSION:-最新版}"
@@ -91,6 +101,44 @@ jobs:
           echo "正在为 Ubuntu $UBUNTU_VERSION ($CODENAME) 创建最小根文件系统..."
           sudo debootstrap "$CODENAME" /target http://archive.ubuntu.com/ubuntu
           sudo chroot /target cat /etc/os-release
+
+      - name: 添加自定义仓库
+        if: steps.parse.outputs.custom_repos != ''
+        env:
+          CUSTOM_REPOS: ${{ steps.parse.outputs.custom_repos }}
+        run: |
+          echo "📦 添加自定义仓库..."
+          sudo mkdir -p /target/etc/apt/keyrings
+
+          while IFS= read -r line; do
+            [ -z "$line" ] && continue
+            # 格式：仓库地址|GPG Key URL（GPG 可选）
+            REPO_URL=$(echo "$line" | cut -d'|' -f1 | xargs)
+            GPG_URL=$(echo "$line" | cut -d'|' -f2 | xargs)
+
+            echo "  添加: $REPO_URL"
+
+            # 下载并安装 GPG key
+            if [ -n "$GPG_URL" ]; then
+              KEY_NAME=$(echo "$GPG_URL" | md5sum | cut -d' ' -f1)
+              curl -fsSL "$GPG_URL" | sudo gpg --dearmor -o "/target/etc/apt/keyrings/${KEY_NAME}.gpg"
+              SIGNED_BY="[signed-by=/etc/apt/keyrings/${KEY_NAME}.gpg] "
+            else
+              SIGNED_BY=""
+            fi
+
+            # 判断是 .list 文件 URL 还是直接的仓库 URL
+            if echo "$REPO_URL" | grep -q "\.list$"; then
+              # .list 文件：下载并修改添加 signed-by
+              curl -sL "$REPO_URL" | sed "s#deb https://#deb ${SIGNED_BY}https://#g" | sudo tee -a /target/etc/apt/sources.list.d/custom.list > /dev/null
+            else
+              # 直接仓库 URL
+              CODENAME=$(grep "^VERSION_CODENAME=" /target/etc/os-release | cut -d= -f2)
+              echo "deb ${SIGNED_BY}${REPO_URL} ${CODENAME} main" | sudo tee -a /target/etc/apt/sources.list.d/custom.list > /dev/null
+            fi
+          done <<< "$CUSTOM_REPOS"
+
+          echo "✅ 自定义仓库添加完成"
 
       - name: 下载包及依赖
         id: download
