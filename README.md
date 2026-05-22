@@ -127,10 +127,17 @@ docker load -i nginx_latest-linux-amd64.tar.gz
 
 #### 1、点击上方「提交请求」按钮，填写 Issue 表单
 
-> **软件包名**：如 `nginx`、`vim`、`curl`<br>
+> **软件包名**：每行一个，如需指定版本用 `=` 连接（如 `nginx=1.24.0-1ubuntu1`）<br>
 > **Ubuntu 版本**：如 `22.04`、`24.04`、`26.04`<br>
-> **包版本**（可选）：如 `1.24.0-1ubuntu1`，留空则下载最新版<br>
+> **自定义仓库**（可选）：从第三方源下载，格式 `仓库地址|GPG Key URL`<br>
 > 标题会自动生成，无需手动填写
+
+> [!TIP]
+> 支持一次性下载多个包，如 NVIDIA Container Toolkit：<br>
+> `nvidia-container-toolkit=1.19.1-1`<br>
+> `nvidia-container-toolkit-base=1.19.1-1`<br>
+> `libnvidia-container-tools=1.19.1-1`<br>
+> `libnvidia-container1=1.19.1-1`
 
 #### 2、等待 Actions 自动执行
 

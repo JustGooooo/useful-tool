@@ -26,15 +26,11 @@ jobs:
             echo "$ISSUE_BODY" | grep -A3 "$1" | grep -v "^###" | grep -v "^--$" | sed '/^$/d' | head -1 | xargs
           }
 
-          PACKAGE_NAME=$(extract_field "### 软件包名")
+          # 软件包名是 textarea，可能多行
+          PACKAGE_NAMES=$(echo "$ISSUE_BODY" | sed -n '/### 软件包名/,/### Ubuntu 版本/p' | grep -v "^###" | grep -v "^--$" | sed '/^$/d' | sed 's/^[[:space:]]*//' | tr '\n' '|' | sed 's/|$//')
           UBUNTU_VERSION=$(extract_field "### Ubuntu 版本")
-          PACKAGE_VERSION=$(extract_field "### 包版本（可选）")
-          # Issue Forms 留空字段返回 "_No response_"
-          if [ "$PACKAGE_VERSION" = "_No response_" ]; then
-            PACKAGE_VERSION=""
-          fi
 
-          if [ -z "$PACKAGE_NAME" ]; then
+          if [ -z "$PACKAGE_NAMES" ] || [ "$PACKAGE_NAMES" = "_No response_" ]; then
             echo "::error::未找到软件包名"
             exit 1
           fi
@@ -43,9 +39,17 @@ jobs:
             exit 1
           fi
 
-          echo "package_name=$PACKAGE_NAME" >> $GITHUB_OUTPUT
+          # 统计包数量
+          PKG_COUNT=$(echo "$PACKAGE_NAMES" | tr '|' '\n' | wc -l)
+          FIRST_PKG=$(echo "$PACKAGE_NAMES" | cut -d'|' -f1)
+
+          echo "package_names=$PACKAGE_NAMES" >> $GITHUB_OUTPUT
           echo "ubuntu_version=$UBUNTU_VERSION" >> $GITHUB_OUTPUT
-          echo "package_version=$PACKAGE_VERSION" >> $GITHUB_OUTPUT
+          echo "pkg_count=$PKG_COUNT" >> $GITHUB_OUTPUT
+
+          echo "📦 包名: $PACKAGE_NAMES"
+          echo "🐧 Ubuntu: $UBUNTU_VERSION"
+          echo "📋 数量: $PKG_COUNT"
 
           # 提取自定义仓库（textarea，可能多行）
           CUSTOM_REPOS=$(echo "$ISSUE_BODY" | sed -n '/### 自定义仓库（可选）/,$ p' | grep -v "^###" | grep -v "^--$" | sed '/^$/d' | sed 's/^[[:space:]]*//')
@@ -57,21 +61,16 @@ jobs:
           echo "EOF" >> $GITHUB_OUTPUT
           echo "🔗 自定义源: ${CUSTOM_REPOS:-无}"
 
-          echo "📦 包名: $PACKAGE_NAME"
-          echo "🐧 Ubuntu: $UBUNTU_VERSION"
-          echo "📋 版本: ${PACKAGE_VERSION:-最新版}"
-
       - name: 更新 Issue 标题
         uses: actions/github-script@v7
         with:
           script: |
-            const pkg = '${{ steps.parse.outputs.package_name }}';
+            const pkgs = '${{ steps.parse.outputs.package_names }}'.split('|');
             const ver = '${{ steps.parse.outputs.ubuntu_version }}';
-            const pkgVer = '${{ steps.parse.outputs.package_version }}';
-            let title = `[deb] ${pkg} - Ubuntu ${ver}`;
-            if (pkgVer && pkgVer !== '_No response_') {
-              title += ` (${pkgVer})`;
-            }
+            const count = parseInt('${{ steps.parse.outputs.pkg_count }}');
+            let title = `[deb] ${pkgs[0]}`;
+            if (count > 1) title += ` +${count - 1}`;
+            title += ` - Ubuntu ${ver}`;
             await github.rest.issues.update({
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -143,29 +142,28 @@ jobs:
       - name: 下载包及依赖
         id: download
         env:
-          PACKAGE_NAME: ${{ steps.parse.outputs.package_name }}
-          PACKAGE_VERSION: ${{ steps.parse.outputs.package_version }}
+          PACKAGE_NAMES: ${{ steps.parse.outputs.package_names }}
         run: |
           sudo mkdir -p /target/output
-
-          if [ -n "$PACKAGE_VERSION" ]; then
-            DOWNLOAD_TARGET="${PACKAGE_NAME}=${PACKAGE_VERSION}"
-          else
-            DOWNLOAD_TARGET="$PACKAGE_NAME"
-          fi
 
           sudo chroot /target apt-get update
           sudo chroot /target apt-get install -y apt-utils
 
-          sudo chroot /target bash -c "
-            cd /output && \
-            apt-get download \$(apt-cache depends --recurse \
-              --no-recommends --no-suggests \
-              --no-conflicts --no-breaks \
-              --no-replaces --no-enhances \
-              ${DOWNLOAD_TARGET} 2>/dev/null \
-              | grep '^\w' | sort -u) 2>&1 || true
-          "
+          # 遍历所有包名，逐个下载
+          IFS='|' read -r -a PKG_ARRAY <<< "$PACKAGE_NAMES"
+          for pkg in "${PKG_ARRAY[@]}"; do
+            pkg=$(echo "$pkg" | xargs)
+            echo "📥 下载: $pkg"
+            sudo chroot /target bash -c "
+              cd /output && \
+              apt-get download \$(apt-cache depends --recurse \
+                --no-recommends --no-suggests \
+                --no-conflicts --no-breaks \
+                --no-replaces --no-enhances \
+                ${pkg} 2>/dev/null \
+                | grep '^\w' | sort -u) 2>&1 || true
+            "
+          done
 
           DEB_COUNT=$(ls /target/output/*.deb 2>/dev/null | wc -l)
           echo "deb_count=$DEB_COUNT" >> $GITHUB_OUTPUT
@@ -181,18 +179,26 @@ jobs:
       - name: 打包为 tar.gz
         id: package
         env:
-          PACKAGE_NAME: ${{ steps.parse.outputs.package_name }}
+          PACKAGE_NAMES: ${{ steps.parse.outputs.package_names }}
+          PKG_COUNT: ${{ steps.parse.outputs.pkg_count }}
           UBUNTU_VERSION: ${{ steps.parse.outputs.ubuntu_version }}
         run: |
+          FIRST_PKG=$(echo "$PACKAGE_NAMES" | cut -d'|' -f1)
           TIMESTAMP=$(TZ="Asia/Shanghai" date +'%Y%m%d-%H%M%S')
-          ARCHIVE_NAME="deb-${PACKAGE_NAME}-ubuntu${UBUNTU_VERSION}-${TIMESTAMP}.tar.gz"
-          RELEASE_NAME="${PACKAGE_NAME} for Ubuntu ${UBUNTU_VERSION} - $(TZ='Asia/Shanghai' date +'%Y-%m-%d %H:%M')"
+
+          if [ "$PKG_COUNT" -gt 1 ]; then
+            ARCHIVE_NAME="deb-${FIRST_PKG}-and-$((PKG_COUNT-1))-more-ubuntu${UBUNTU_VERSION}-${TIMESTAMP}.tar.gz"
+            RELEASE_NAME="${FIRST_PKG} +$((PKG_COUNT-1)) for Ubuntu ${UBUNTU_VERSION} - $(TZ='Asia/Shanghai' date +'%Y-%m-%d %H:%M')"
+          else
+            ARCHIVE_NAME="deb-${FIRST_PKG}-ubuntu${UBUNTU_VERSION}-${TIMESTAMP}.tar.gz"
+            RELEASE_NAME="${FIRST_PKG} for Ubuntu ${UBUNTU_VERSION} - $(TZ='Asia/Shanghai' date +'%Y-%m-%d %H:%M')"
+          fi
 
           tar -czf "$ARCHIVE_NAME" -C /target/output .
 
           echo "archive_name=$ARCHIVE_NAME" >> $GITHUB_OUTPUT
           echo "release_name=$RELEASE_NAME" >> $GITHUB_OUTPUT
-          echo "tag_name=deb-${PACKAGE_NAME}-ubuntu${UBUNTU_VERSION}-${TIMESTAMP}" >> $GITHUB_OUTPUT
+          echo "tag_name=deb-${FIRST_PKG}-ubuntu${UBUNTU_VERSION}-${TIMESTAMP}" >> $GITHUB_OUTPUT
 
           echo "📦 已打包: $ARCHIVE_NAME ($(du -h "$ARCHIVE_NAME" | cut -f1))"
 
@@ -202,9 +208,9 @@ jobs:
           tag_name: ${{ steps.package.outputs.tag_name }}
           name: ${{ steps.package.outputs.release_name }}
           body: |
-            ## ${{ steps.parse.outputs.package_name }} for Ubuntu ${{ steps.parse.outputs.ubuntu_version }}
+            ## ${{ steps.parse.outputs.package_names }} for Ubuntu ${{ steps.parse.outputs.ubuntu_version }}
 
-            - **软件包**: ${{ steps.parse.outputs.package_name }}
+            - **软件包**: ${{ steps.parse.outputs.package_names }}
             - **Ubuntu 版本**: ${{ steps.parse.outputs.ubuntu_version }}
             - **包含 .deb 文件数**: ${{ steps.download.outputs.deb_count }}
 
@@ -225,7 +231,7 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
-            const package_name = '${{ steps.parse.outputs.package_name }}';
+            const package_names = '${{ steps.parse.outputs.package_names }}';
             const ubuntu_version = '${{ steps.parse.outputs.ubuntu_version }}';
             const deb_count = '${{ steps.download.outputs.deb_count }}';
             const release_url = `https://github.com/${context.repo.owner}/${context.repo.repo}/releases/tag/${{ steps.package.outputs.tag_name }}`;
@@ -234,7 +240,7 @@ jobs:
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
-              body: `✅ Deb 包下载成功！\n\n- **软件包**：${package_name}\n- **Ubuntu 版本**：${ubuntu_version}\n- **包含 .deb 文件数**：${deb_count}\n- **Release 链接**：[点击下载](${release_url})`
+              body: `✅ Deb 包下载成功！\n\n- **软件包**：${package_names}\n- **Ubuntu 版本**：${ubuntu_version}\n- **包含 .deb 文件数**：${deb_count}\n- **Release 链接**：[点击下载](${release_url})`
             });
 
             await github.rest.issues.addLabels({
@@ -256,7 +262,7 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
-            const package_name = '${{ steps.parse.outputs.package_name }}';
+            const package_names = '${{ steps.parse.outputs.package_names }}';
             const ubuntu_version = '${{ steps.parse.outputs.ubuntu_version }}';
             const run_url = `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
 
@@ -264,7 +270,7 @@ jobs:
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
-              body: `❌ Deb 包下载失败\n\n- **软件包**：${package_name}\n- **Ubuntu 版本**：${ubuntu_version}\n- **构建日志**：[点击查看](${run_url})`
+              body: `❌ Deb 包下载失败\n\n- **软件包**：${package_names}\n- **Ubuntu 版本**：${ubuntu_version}\n- **构建日志**：[点击查看](${run_url})`
             });
 
             await github.rest.issues.addLabels({
