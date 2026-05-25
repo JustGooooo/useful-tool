@@ -214,12 +214,25 @@ pip install --no-index --find-links=. numpy
 #### 1、点击上方「提交请求」按钮，填写 Issue 表单
 
 > **Maven 坐标**：格式 `groupId:artifactId:version`，如 `org.apache.commons:commons-lang3:3.14.0`<br>
+> **pom.xml 内容**（可选）：粘贴完整 pom.xml，自动下载其中声明的所有依赖<br>
 > **仓库地址**（可选）：留空使用 Maven Central，可填写私有仓库地址<br>
 > 标题会自动生成，无需手动填写
 
+> [!TIP]
+> 两种方式二选一，都填时优先使用 pom.xml。pom.xml 模式适合一次性下载项目的所有依赖：<br>
+> ```xml
+> <dependencies>
+>   <dependency>
+>     <groupId>org.springframework.boot</groupId>
+>     <artifactId>spring-boot-starter-web</artifactId>
+>     <version>3.2.0</version>
+>   </dependency>
+> </dependencies>
+> ```
+
 #### 2、等待 Actions 自动执行
 
-> 自动解析坐标 → 下载包及所有传递依赖 → 保留仓库目录结构 → 打包发布到 Release
+> 自动解析坐标或 pom.xml → 下载包及所有传递依赖 → 保留仓库目录结构 → 打包发布到 Release
 
 #### 3、导入本地仓库
 

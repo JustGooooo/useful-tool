@@ -30,53 +30,74 @@ jobs:
           REPO_URL=$(extract_field "### 仓库地址（可选）")
 
           # Issue Forms 留空字段返回 "_No response_"
+          if [ "$MAVEN_COORD" = "_No response_" ]; then
+            MAVEN_COORD=""
+          fi
           if [ "$REPO_URL" = "_No response_" ]; then
             REPO_URL=""
           fi
 
-          if [ -z "$MAVEN_COORD" ]; then
-            echo "::error::未找到 Maven 坐标"
+          # 提取 pom.xml 内容（textarea，多行）
+          POM_CONTENT=$(echo "$ISSUE_BODY" | sed -n '/### pom\.xml 内容（可选）/,/### 附加内容/p' | grep -v "^###" | grep -v "^--$" | sed '/^$/d')
+          if [ "$POM_CONTENT" = "_No response_" ] || [ -z "$POM_CONTENT" ]; then
+            POM_CONTENT=""
+          fi
+
+          # 判断模式：pom 优先
+          if [ -n "$POM_CONTENT" ]; then
+            USE_POM=true
+            echo "mode=pom" >> $GITHUB_OUTPUT
+            echo "📋 模式: pom.xml 上传"
+          else
+            USE_POM=false
+            echo "mode=coordinate" >> $GITHUB_OUTPUT
+            echo "📋 模式: Maven 坐标"
+          fi
+
+          # 坐标模式必须有坐标
+          if [ "$USE_POM" = false ] && [ -z "$MAVEN_COORD" ]; then
+            echo "::error::请填写 Maven 坐标或粘贴 pom.xml 内容"
             exit 1
           fi
 
-          # 解析 groupId:artifactId:version
-          GROUP_ID=$(echo "$MAVEN_COORD" | cut -d: -f1)
-          ARTIFACT_ID=$(echo "$MAVEN_COORD" | cut -d: -f2)
-          VERSION=$(echo "$MAVEN_COORD" | cut -d: -f3)
+          if [ -n "$MAVEN_COORD" ]; then
+            GROUP_ID=$(echo "$MAVEN_COORD" | cut -d: -f1)
+            ARTIFACT_ID=$(echo "$MAVEN_COORD" | cut -d: -f2)
+            VERSION=$(echo "$MAVEN_COORD" | cut -d: -f3)
 
-          if [ -z "$GROUP_ID" ] || [ -z "$ARTIFACT_ID" ] || [ -z "$VERSION" ]; then
-            echo "::error::Maven 坐标格式错误，应为 groupId:artifactId:version"
-            exit 1
+            if [ -z "$GROUP_ID" ] || [ -z "$ARTIFACT_ID" ] || [ -z "$VERSION" ]; then
+              echo "::error::Maven 坐标格式错误，应为 groupId:artifactId:version"
+              exit 1
+            fi
+            echo "group_id=$GROUP_ID" >> $GITHUB_OUTPUT
+            echo "artifact_id=$ARTIFACT_ID" >> $GITHUB_OUTPUT
+            echo "version=$VERSION" >> $GITHUB_OUTPUT
+            echo "🏢 Group: $GROUP_ID"
+            echo "📦 Artifact: $ARTIFACT_ID"
+            echo "📋 Version: $VERSION"
           fi
 
           echo "maven_coord=$MAVEN_COORD" >> $GITHUB_OUTPUT
-          echo "group_id=$GROUP_ID" >> $GITHUB_OUTPUT
-          echo "artifact_id=$ARTIFACT_ID" >> $GITHUB_OUTPUT
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "classifiers=$CLASSIFIERS" >> $GITHUB_OUTPUT
           echo "transitive=$TRANSITIVE" >> $GITHUB_OUTPUT
           echo "repo_url=$REPO_URL" >> $GITHUB_OUTPUT
+          echo "pom_content<<POM_EOF" >> $GITHUB_OUTPUT
+          echo "$POM_CONTENT" >> $GITHUB_OUTPUT
+          echo "POM_EOF" >> $GITHUB_OUTPUT
 
-          echo "📦 坐标: $MAVEN_COORD"
-          echo "🏢 Group: $GROUP_ID"
-          echo "📦 Artifact: $ARTIFACT_ID"
-          echo "📋 Version: $VERSION"
+          echo "📦 坐标: ${MAVEN_COORD:-无}"
           echo "🏷️ 附加内容: $CLASSIFIERS"
           echo "🔗 依赖: $TRANSITIVE"
           echo "🔗 仓库: ${REPO_URL:-Maven Central}"
-
-          # 调试：显示 CLASSIFIERS 的原始值和 grep 结果
-          echo "DEBUG CLASSIFIERS raw: [$CLASSIFIERS]"
-          echo "$CLASSIFIERS" | grep -q "源码" && echo "DEBUG grep 源码: 匹配" || echo "DEBUG grep 源码: 不匹配"
-          echo "$CLASSIFIERS" | grep -q "javadoc" && echo "DEBUG grep javadoc: 匹配" || echo "DEBUG grep javadoc: 不匹配"
 
       - name: 更新 Issue 标题
         uses: actions/github-script@v7
         with:
           script: |
+            const mode = '${{ steps.parse.outputs.mode }}';
             const coord = '${{ steps.parse.outputs.maven_coord }}';
             const repoUrl = '${{ steps.parse.outputs.repo_url }}';
-            let title = `[maven] ${coord}`;
+            let title = mode === 'pom' ? '[maven] pom.xml' : `[maven] ${coord}`;
             if (repoUrl) title += ' (custom repo)';
             await github.rest.issues.update({
               owner: context.repo.owner,
@@ -101,16 +122,24 @@ jobs:
           MAVEN_COORD: ${{ steps.parse.outputs.maven_coord }}
           CLASSIFIERS: ${{ steps.parse.outputs.classifiers }}
           TRANSITIVE: ${{ steps.parse.outputs.transitive }}
+          USE_POM: ${{ steps.parse.outputs.mode }}
+          POM_CONTENT: ${{ steps.parse.outputs.pom_content }}
         run: |
           mkdir -p /tmp/maven-output
 
-          # 创建临时 pom.xml 用于下载依赖
-          REPO_SECTION=""
-          if [ -n "$REPO_URL" ]; then
-            REPO_SECTION="<repositories><repository><id>custom</id><url>${REPO_URL}</url></repository></repositories>"
-          fi
+          # 根据模式创建 pom.xml
+          if [ "$USE_POM" = "pom" ]; then
+            # pom.xml 模式：使用用户提供的 pom.xml
+            echo "📋 使用用户上传的 pom.xml"
+            echo "$POM_CONTENT" > /tmp/pom.xml
+          else
+            # 坐标模式：生成临时 pom.xml
+            REPO_SECTION=""
+            if [ -n "$REPO_URL" ]; then
+              REPO_SECTION="<repositories><repository><id>custom</id><url>${REPO_URL}</url></repository></repositories>"
+            fi
 
-          cat > /tmp/pom.xml <<EOF
+            cat > /tmp/pom.xml <<EOF
           <project>
             <modelVersion>4.0.0</modelVersion>
             <groupId>temp</groupId>
@@ -126,10 +155,12 @@ jobs:
             </dependencies>
           </project>
           EOF
+          fi
+
+          echo "=== pom.xml 内容 ==="
+          cat /tmp/pom.xml
 
           # 构建 mvn 参数
-          # -Dmdep.copyPom=true: 同时下载 pom 文件
-          # -Dmdep.useRepositoryLayout=true: 保留 Maven 仓库目录结构
           MVN_OPTS="-DoutputDirectory=/tmp/maven-output -Dmdep.useRepositoryLayout=true -Dmdep.copyPom=true -B -q"
 
           # 是否包含传递依赖
@@ -138,27 +169,29 @@ jobs:
           fi
 
           # 下载主包（jar + pom）
-          echo "📥 下载主包..."
+          echo "📥 下载依赖..."
           mvn -f /tmp/pom.xml dependency:copy-dependencies $MVN_OPTS
 
-          # 根据 CLASSIFIERS 内容下载 sources/javadoc
-          NEED_SOURCES=false
-          NEED_JAVADOC=false
-          if echo "$CLASSIFIERS" | grep -q "源码"; then
-            NEED_SOURCES=true
-          fi
-          if echo "$CLASSIFIERS" | grep -q "javadoc"; then
-            NEED_JAVADOC=true
-          fi
+          # 仅坐标模式下载 sources/javadoc
+          if [ "$USE_POM" != "pom" ]; then
+            NEED_SOURCES=false
+            NEED_JAVADOC=false
+            if echo "$CLASSIFIERS" | grep -q "源码"; then
+              NEED_SOURCES=true
+            fi
+            if echo "$CLASSIFIERS" | grep -q "javadoc"; then
+              NEED_JAVADOC=true
+            fi
 
-          if [ "$NEED_SOURCES" = true ]; then
-            echo "📥 下载 sources..."
-            mvn -f /tmp/pom.xml dependency:copy-dependencies $MVN_OPTS -Dclassifier=sources -Dmdep.failOnMissingClassifierArtifact=false || true
-          fi
+            if [ "$NEED_SOURCES" = true ]; then
+              echo "📥 下载 sources..."
+              mvn -f /tmp/pom.xml dependency:copy-dependencies $MVN_OPTS -Dclassifier=sources -Dmdep.failOnMissingClassifierArtifact=false || true
+            fi
 
-          if [ "$NEED_JAVADOC" = true ]; then
-            echo "📥 下载 javadoc..."
-            mvn -f /tmp/pom.xml dependency:copy-dependencies $MVN_OPTS -Dclassifier=javadoc -Dmdep.failOnMissingClassifierArtifact=false || true
+            if [ "$NEED_JAVADOC" = true ]; then
+              echo "📥 下载 javadoc..."
+              mvn -f /tmp/pom.xml dependency:copy-dependencies $MVN_OPTS -Dclassifier=javadoc -Dmdep.failOnMissingClassifierArtifact=false || true
+            fi
           fi
 
           # 显示下载结果
@@ -187,16 +220,25 @@ jobs:
         env:
           ARTIFACT_ID: ${{ steps.parse.outputs.artifact_id }}
           VERSION: ${{ steps.parse.outputs.version }}
+          USE_POM: ${{ steps.parse.outputs.mode }}
         run: |
           TIMESTAMP=$(TZ="Asia/Shanghai" date +'%Y%m%d-%H%M%S')
-          ARCHIVE_NAME="maven-${ARTIFACT_ID}-${VERSION}-${TIMESTAMP}.tar.gz"
-          RELEASE_NAME="${ARTIFACT_ID}-${VERSION} - $(TZ='Asia/Shanghai' date +'%Y-%m-%d %H:%M')"
+
+          if [ "$USE_POM" = "pom" ]; then
+            ARCHIVE_NAME="maven-pom-${TIMESTAMP}.tar.gz"
+            RELEASE_NAME="pom.xml dependencies - $(TZ='Asia/Shanghai' date +'%Y-%m-%d %H:%M')"
+            TAG_NAME="maven-pom-${TIMESTAMP}"
+          else
+            ARCHIVE_NAME="maven-${ARTIFACT_ID}-${VERSION}-${TIMESTAMP}.tar.gz"
+            RELEASE_NAME="${ARTIFACT_ID}-${VERSION} - $(TZ='Asia/Shanghai' date +'%Y-%m-%d %H:%M')"
+            TAG_NAME="maven-${ARTIFACT_ID}-${VERSION}-${TIMESTAMP}"
+          fi
 
           tar -czf "$ARCHIVE_NAME" -C /tmp/maven-output .
 
           echo "archive_name=$ARCHIVE_NAME" >> $GITHUB_OUTPUT
           echo "release_name=$RELEASE_NAME" >> $GITHUB_OUTPUT
-          echo "tag_name=maven-${ARTIFACT_ID}-${VERSION}-${TIMESTAMP}" >> $GITHUB_OUTPUT
+          echo "tag_name=$TAG_NAME" >> $GITHUB_OUTPUT
 
           echo "📦 已打包: $ARCHIVE_NAME ($(du -h "$ARCHIVE_NAME" | cut -f1))"
 
@@ -225,9 +267,9 @@ jobs:
           tag_name: ${{ steps.package.outputs.tag_name }}
           name: ${{ steps.package.outputs.release_name }}
           body: |
-            ## ${{ steps.parse.outputs.maven_coord }}
+            ## ${{ steps.parse.outputs.maven_coord || 'pom.xml dependencies' }}
 
-            - **坐标**: ${{ steps.parse.outputs.maven_coord }}
+            - **来源**: ${{ steps.parse.outputs.maven_coord || '用户上传的 pom.xml' }}
             - **包含 .jar 文件数**: ${{ steps.download.outputs.jar_count }}
             - **包含 .pom 文件数**: ${{ steps.download.outputs.pom_count }}
             - **总大小**: ${{ steps.download.outputs.total_size_mb }} MB
@@ -252,7 +294,7 @@ jobs:
         if: steps.upload_method.outputs.method == 'artifact'
         uses: actions/upload-artifact@v4
         with:
-          name: maven-${{ steps.parse.outputs.artifact_id }}-${{ steps.parse.outputs.version }}
+          name: ${{ steps.package.outputs.archive_name }}
           path: /tmp/maven-output
           retention-days: 90
 
@@ -261,12 +303,17 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
+            const mode = '${{ steps.parse.outputs.mode }}';
             const coord = '${{ steps.parse.outputs.maven_coord }}';
             const jarCount = '${{ steps.download.outputs.jar_count }}';
             const method = '${{ steps.upload_method.outputs.method }}';
 
             let body = `✅ Maven 包下载成功！\n\n`;
-            body += `- **坐标**：${coord}\n`;
+            if (mode === 'pom') {
+              body += `- **来源**：用户上传的 pom.xml\n`;
+            } else {
+              body += `- **坐标**：${coord}\n`;
+            }
             body += `- **包含 .jar 文件数**：${jarCount}\n`;
 
             if (method === 'release') {
@@ -307,14 +354,16 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
+            const mode = '${{ steps.parse.outputs.mode }}';
             const coord = '${{ steps.parse.outputs.maven_coord }}';
             const run_url = `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
 
+            let desc = mode === 'pom' ? 'pom.xml' : coord;
             await github.rest.issues.createComment({
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
-              body: `❌ Maven 包下载失败\n\n- **坐标**：${coord}\n- **构建日志**：[点击查看](${run_url})`
+              body: `❌ Maven 包下载失败\n\n- **来源**：${desc}\n- **构建日志**：[点击查看](${run_url})`
             });
 
             await github.rest.issues.addLabels({

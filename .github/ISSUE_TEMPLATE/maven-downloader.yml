@@ -4,6 +4,11 @@ description: 下载指定 Maven 包及其所有依赖，打包发布到 Release�
 title: "[maven] "
 labels: ["maven-downloader"]
 body:
+  - type: markdown
+    attributes:
+      value: |
+        > **二选一**：填写 Maven 坐标 **或** 粘贴 pom.xml 内容。两者都填时优先使用 pom.xml。
+
   - type: input
     id: maven_coordinate
     attributes:
@@ -11,13 +16,35 @@ body:
       description: "格式：groupId:artifactId:version"
       placeholder: "org.apache.commons:commons-lang3:3.14.0"
     validations:
-      required: true
+      required: false
+
+  - type: textarea
+    id: pom_content
+    attributes:
+      label: pom.xml 内容（可选）
+      description: "粘贴完整的 pom.xml 内容，将自动下载其中声明的所有依赖"
+      placeholder: |
+        <project>
+          <modelVersion>4.0.0</modelVersion>
+          <groupId>com.example</groupId>
+          <artifactId>my-app</artifactId>
+          <version>1.0</version>
+          <dependencies>
+            <dependency>
+              <groupId>org.springframework.boot</groupId>
+              <artifactId>spring-boot-starter-web</artifactId>
+              <version>3.2.0</version>
+            </dependency>
+          </dependencies>
+        </project>
+    validations:
+      required: false
 
   - type: dropdown
     id: classifiers
     attributes:
       label: 附加内容
-      description: "是否下载源码和 javadoc"
+      description: "是否下载源码和 javadoc（仅坐标模式有效）"
       options:
         - "仅主包（不下载源码和 javadoc）"
         - "同时下载源码（sources）"
